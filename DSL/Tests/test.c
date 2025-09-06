@@ -7,6 +7,7 @@
 
 int main(){
   VectorTests();
+  VectorLargeTests();
   VectorExample();
 
   return 0;
