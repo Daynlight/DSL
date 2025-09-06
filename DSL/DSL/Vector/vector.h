@@ -9,6 +9,7 @@ typedef struct {
   unsigned int size;
   unsigned int capacity;
   unsigned int size_elem;
+  char sorted;
 } Vector;
 
 // Constructor/Destructor
@@ -25,8 +26,8 @@ void vector_shrink(Vector* vec);
 unsigned int vector_get_size(Vector* vec);
 unsigned int vector_get_capacity(Vector* vec);
 unsigned int vector_get_element_size(Vector* vec);
+char vector_get_sorted(Vector* vec);
 char vector_is_empty(Vector* vec);
-void* vector_get_data(Vector* vec);
 
 // Pushers
 void vector_push(Vector* vec, void* el);
@@ -49,9 +50,11 @@ void vector_at(Vector* vec, unsigned int index, void* el);
 
 // Algorithms
 void vector_foreach(Vector* vec, void (*func)(void*, void*), void* user_data);
-int vector_find(Vector* vec, void* el, int (*cmp)(const void*, const void*));
-int vector_find_if(Vector* vec, int (*predicate)(const void*));
-char vector_contains(Vector* vec, void* el, int (*cmp)(const void*, const void*));
+unsigned int vector_find(Vector* vec, void* el, int (*cmp)(const void*, const void*));
+unsigned int vector_bfind(Vector* vec, void* el, int (*cmp)(const void*, const void*));
+unsigned int vector_find_if(Vector* vec, int (*predicate)(const void*));
+unsigned int vector_bfind_if(Vector* vec, int (*predicate)(const void*));
+char vector_bcontains(Vector* vec, void* el, int (*cmp)(const void*, const void*));
 void vector_swap(Vector* a, Vector* b);
 void vector_map(Vector* vec, void (*func)(void*));
 void vector_qsort(Vector* vec, int (*cmp)(const void*, const void*));

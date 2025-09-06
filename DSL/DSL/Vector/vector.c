@@ -5,6 +5,7 @@ void vector_init(Vector* vec, unsigned int size_elem) {
   vec->capacity = 1;
   vec->size = 0;
   vec->size_elem = size_elem;
+  vec->sorted = 1;
   vec->data = calloc(vec->capacity, size_elem);
   if (!vec->data) vec->capacity = 0;
 };
@@ -67,12 +68,12 @@ unsigned int vector_get_element_size(Vector *vec){
   return vec->size_elem;
 };
 
-char vector_is_empty(Vector *vec) {
-  return vec->size == 0;
+char vector_get_sorted(Vector *vec){
+  return vec->sorted;
 };
 
-void *vector_get_data(Vector *vec) {
-  return vec->data;
+char vector_is_empty(Vector *vec) {
+  return vec->size == 0;
 };
 
 void vector_push(Vector *vec, void *el) {
@@ -84,6 +85,7 @@ void vector_push(Vector *vec, void *el) {
   void* target = (char*)vec->data + vec->size * vec->size_elem;
   memcpy(target, el, vec->size_elem);
   vec->size++;
+  vec->sorted = 0;
 };
 
 void vector_push_front(Vector *vec, void *el) {
@@ -98,6 +100,7 @@ void vector_push_front(Vector *vec, void *el) {
 
   memcpy(vec->data, el, vec->size_elem);
   vec->size++;
+  vec->sorted = 0;
 };
 
 void vector_push_at(Vector *vec, unsigned int index, void *el) {
@@ -117,6 +120,7 @@ void vector_push_at(Vector *vec, unsigned int index, void *el) {
 
     memcpy((char*)vec->data + index * vec->size_elem, el, vec->size_elem);
     vec->size++;
+    vec->sorted = 0;
 }
 
 void vector_pop(Vector *vec, void *el) {
@@ -162,6 +166,7 @@ void vector_clear(Vector *vec) {
   if (!vec) return;
   vec->size = 0;
   memset(vec->data, 0, vec->capacity * vec->size_elem);
+  vec->sorted;
 }
 
 void vector_erase(Vector *vec, unsigned int index) {

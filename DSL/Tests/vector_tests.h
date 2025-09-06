@@ -98,12 +98,12 @@ void VectorTests() {
     if (out == -1) { passed_tests++; printf("[PASS] INT: at out-of-bounds\n"); }
     else printf("[FAIL] INT: at out-of-bounds\n");
 
-    // Test: get_size, get_capacity, get_element_size, get_data, is_empty
+    // Test: get_size, get_capacity, get_element_size, vector_get_sorted, is_empty
     total_tests++;
     if (vector_get_size(&vi) == 2 &&
         vector_get_capacity(&vi) >= 2 &&
         vector_get_element_size(&vi) == sizeof(int) &&
-        vector_get_data(&vi) != NULL &&
+        vector_get_sorted(&vi) == 0 &&
         !vector_is_empty(&vi)) { passed_tests++; printf("[PASS] INT: getters\n"); }
     else printf("[FAIL] INT: getters\n");
 
