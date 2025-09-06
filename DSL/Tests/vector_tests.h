@@ -1,5 +1,5 @@
-#ifndef PRAGMA_VECTOR_FULL_TESTS
-#define PRAGMA_VECTOR_FULL_TESTS
+#ifndef PRAGMA_VECTOR_TESTS
+#define PRAGMA_VECTOR_TESTS
 
 #include <stdio.h>
 #include <string.h>
