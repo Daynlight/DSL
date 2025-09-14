@@ -19,77 +19,90 @@
  */
 
 
- 
 
-#ifndef PragmaVector
-#define PragmaVector
+///#################### memory #####################///
+///[ | | | | | | | | | | | | | | | | | | | | | | | ]///
+/// ^ head                                   back ^ ///
+
+
+
+
+#pragma once
 #include <stdlib.h>
+#include <stdexcept>
 #include <string.h>
 
-// Structure
-typedef struct {
-  void* data;
-  void* hashmap;
+// HashMap for lookup
+struct HashMap{
+  unsigned int hash;
+  unsigned int index;
+};
+
+// VectorClass
+template<typename T>
+class Vector {
+private:
+  T* data;
+  Vector<HashMap>* hashmap = nullptr;
   unsigned int buckets;
   unsigned int capacity;
-  unsigned int size_elem;
   unsigned int size;
 
   char sorted;
   char hashed;
 
-  unsigned int first;
-  unsigned int last;
-} Vector;
+  unsigned int head;
+  unsigned int back;
 
-// Constructor/Destructor
-void vector_init(Vector* vec, unsigned int size_elem);                                              // O(1)
-void vector_destroy(Vector* vec);                                                                   // O(1)
+public:
+  // Constructor/Destructor
+  Vector();    // O(1)
+  ~Vector() noexcept;    // O(1)
 
-// Vector management
-void vector_resize(Vector* vec);                                                                    // O(n)
-void vector_reserve(Vector* vec, unsigned int additional);                                          // O(n)
-void vector_set_capacity(Vector* vec, unsigned int new_capacity);                                   // O(n)
-void vector_shrink(Vector* vec);                                                                    // O(n)
+  // Vector management
+  void setCapacity(unsigned int new_capacity);    // O(log2(n))
+  void reserve(unsigned int additional);    // O(log2(n))
+  void resize();    // O(log2(n))
+  void shrink();    // O(log2(n))
 
-// Get Info
-unsigned int vector_get_size(Vector* vec);                                                          // O(1)
-unsigned int vector_get_capacity(Vector* vec);                                                      // O(1)
-unsigned int vector_get_element_size(Vector* vec);                                                  // O(1)
-char vector_get_sorted(Vector* vec);                                                                // O(1)
-char vector_is_empty(Vector* vec);                                                                  // O(1)
+  // Get Info
+  constexpr unsigned int getSize() const noexcept;    // O(1)
+  constexpr unsigned int getCapacity() const noexcept;    // O(1)
+  constexpr bool getSorted() const noexcept;    // O(1)
+  constexpr bool isEmpty() const noexcept;    // O(1)
 
-// Pushers
-void vector_push(Vector* vec, void* el);                                                            // O(n)
-void vector_push_front(Vector* vec, void* el);                                                      // O(n)
-void vector_push_at(Vector* vec, unsigned int index, void* el);                                     // O(n)
+  // Pushers
+  void pushHead(T el);    // O(log2(n))
+  void pushFront(T el);    // O(log2(n))
+  void pushAt(unsigned int index, T el);    // O(log2(n))
 
-// Popers
-void vector_pop(Vector* vec, void* el);                                                             // O(1)
-void vector_pop_front(Vector* vec, void* el);                                                       // O(n)
-void vector_pop_at(Vector* vec, unsigned int index, void* el);                                      // O(n)
+  // Popers
+  const T popHead();    // O(1)
+  const T popBack();    // O(1)
+  const T popAt(unsigned int index);    // O(n)
 
-// Removers
-void vector_clear(Vector* vec);                                                                     // O(n)
-void vector_erase(Vector* vec, unsigned int index);                                                 // O(n)
+  // Removers
+  void clear() noexcept;    // O(1)
+  void erase(unsigned int index) noexcept;    // O(n)
 
-// Get Without Removing       
-void vector_first(Vector* vec, void* el);                                                           // O(1)
-void vector_last(Vector* vec, void* el);                                                            // O(1)
-void vector_at(Vector* vec, unsigned int index, void* el);                                          // O(1)
+  // Get Without Removing       
+  T& first() const;    // O(1)
+  T& last() const;    // O(1)
+  T& at(unsigned int index) const;    // O(1)
 
-// Algorithms
-void vector_foreach(Vector* vec, void (*func)(void*, void*), void* user_data);                      // O(n)
-void vector_map(Vector* vec, void (*func)(void*));                                                  // O(n)
-unsigned int vector_find(Vector* vec, void* el, int (*cmp)(const void*, const void*));              // O(n)
-unsigned int vector_find_if(Vector* vec, int (*predicate)(const void*));                            // O(n)
-char vector_contains(Vector* vec, void* el, int (*cmp)(const void*, const void*));                  // O(n)
-unsigned int vector_bfind(Vector* vec, void* el, int (*cmp)(const void*, const void*));             // O(log n)
-unsigned int vector_bfind_if(Vector* vec, int (*predicate)(const void*));                           // O(log n)
-char vector_bcontains(Vector* vec, void* el, int (*cmp)(const void*, const void*));                 // O(log n)
-void vector_swap(Vector* a, Vector* b);                                                             // O(1)
-void vector_qsort(Vector* vec, int (*cmp)(const void*, const void*));                               // O(n log n) worst O(n^2)
-void vector_qsort_helper(Vector *vec, int (*cmp)(const void*, const void*), int low, int high);
-int vector_qsort_partition(Vector* vec, int (*cmp)(const void*, const void*), int low, int high);
+  // // Algorithms
+  // void foreach(void (*func)(void*, void*), void* user_data);                      // O(n)
+  // void map(void (*func)(void*));                                                  // O(n)
+  // unsigned int find(void* el, int (*cmp)(const void*, const void*));              // O(n)
+  // unsigned int find_if(int (*predicate)(const void*));                            // O(n)
+  // char contains(void* el, int (*cmp)(const void*, const void*));                  // O(n)
+  // unsigned int bfind(void* el, int (*cmp)(const void*, const void*));             // O(log n)
+  // unsigned int bfind_if(int (*predicate)(const void*));                           // O(log n)
+  // char bcontains(void* el, int (*cmp)(const void*, const void*));                 // O(log n)
+  // void swap(Vector* a, Vector* b);                                                             // O(1)
+  // void qsort(int (*cmp)(const void*, const void*));                               // O(n log n) worst O(n^2)
+  // void qsort_helper(int (*cmp)(const void*, const void*), int low, int high);
+  // int qsort_partition(int (*cmp)(const void*, const void*), int low, int high);
+};
 
-#endif
+#include "vector.hpp"

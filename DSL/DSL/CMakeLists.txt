@@ -1,14 +1,15 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(DSL LANGUAGES C)
+project(DSL LANGUAGES CXX)
 
 set(src
-  Vector/vector.c
+  dsl.cpp
 )
 
 set(header
   dsl.h
   Vector/vector.h
+  Vector/vector.hpp
 )
 
 

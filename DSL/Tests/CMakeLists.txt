@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(Tests LANGUAGES C)
+project(Tests LANGUAGES CXX)
 
 set(src 
-  test.c
+  test.cpp
 )
 
 add_executable(Tests ${src})
