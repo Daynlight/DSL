@@ -13,7 +13,8 @@ set(CMAKE_C_STANDARD_REQUIRED True)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libgcc -static-libstdc++")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
 
-############################## set toolchain to conan ##############################
+
+
 
 add_subdirectory(DSL)
 

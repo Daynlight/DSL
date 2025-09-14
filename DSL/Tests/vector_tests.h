@@ -1,5 +1,5 @@
 #ifndef PragmaVectorSeparatedTests
-#define PragmaVectorSeparatedTests
+#define PragmaVectorSeparatedTests  
 #include <stdio.h>
 #include <string.h>
 #include "../DSL/dsl.h"
@@ -289,6 +289,55 @@ int test_bcontains() {
     return 1;
 }
 
+// ===== Mixed Tests ===
+int test_mixed_push_pop() {
+    Vector v; vector_init(&v,sizeof(int));
+    int a=1,b=2,c=3,d=4;
+    vector_push(&v,&a);   // [1]
+    vector_push_front(&v,&b);  // [2,1]
+    vector_push(&v,&c);   // [2,1,3]
+    vector_push_front(&v,&d);  // [4,2,1,3]
+
+    int first=-1,last=-1;
+    vector_first(&v,&first); vector_last(&v,&last);
+    ASSERT_EQ_INT("mixed first",4,first);
+    ASSERT_EQ_INT("mixed last",3,last);
+
+    int out=-1;
+    vector_pop_front(&v,&out); ASSERT_EQ_INT("pop_front",4,out);
+    vector_pop(&v,&out);  ASSERT_EQ_INT("pop_back",3,out);
+
+    vector_destroy(&v);
+    return 1;
+}
+
+int test_mixed_algorithms() {
+    Vector v; vector_init(&v,sizeof(int));
+    for(int i=0;i<10;i++) {
+        if(i%2==0) vector_push_front(&v,&i); // even front
+        else       vector_push(&v,&i);  // odd back
+    }
+    // Now v has evens descending at front, odds ascending at back.
+
+    vector_qsort(&v,cmp_int);
+
+    int first=-1,last=-1;
+    vector_first(&v,&first); vector_last(&v,&last);
+    ASSERT_EQ_INT("mixed sort first",0,first);
+    ASSERT_EQ_INT("mixed sort last",9,last);
+
+    ASSERT_TRUE("mixed contains 6", vector_bcontains(&v,&(int){6},cmp_int));
+    ASSERT_TRUE("mixed contains missing", !vector_bcontains(&v,&(int){42},cmp_int));
+
+    int sum=0; vector_map(&v,multiply); vector_foreach(&v,add,&sum);
+    int expected = 2* (10*9/2); // sum of 0..9 doubled
+    ASSERT_EQ_INT("mixed map+foreach sum",expected,sum);
+
+    vector_destroy(&v);
+    return 1;
+}
+
+
 // ===== RUN ALL =====
 void VectorTests() {
     int total=0, passed=0;
@@ -319,6 +368,8 @@ void VectorTests() {
     RUN(test_contains_unsorted);
     RUN(test_bcontains);
     RUN(test_contains_sorted);
+    RUN(test_mixed_push_pop);
+    RUN(test_mixed_algorithms);
 
     #undef RUN
     printf("\n=== Vector Separated Test Score: %d/%d passed ===\n", passed,total);
@@ -435,6 +486,28 @@ int test_large_map_foreach() {
     return 1;
 }
 
+int test_mixed_large() {
+    Vector v; vector_init(&v,sizeof(int));
+    int N=1000;
+    for(int i=0;i<N;i++) {
+        if(i%2==0) vector_push_front(&v,&i);
+        else       vector_push(&v,&i);
+    }
+    vector_qsort(&v,cmp_int);
+
+    int first=-1,last=-1;
+    vector_first(&v,&first); vector_last(&v,&last);
+    ASSERT_EQ_INT("mixed large first",0,first);
+    ASSERT_EQ_INT("mixed large last",N-1,last);
+
+    for(int i=0;i<N;i+=100) {
+        ASSERT_TRUE("mixed large bcontains", vector_bcontains(&v,&i,cmp_int));
+    }
+
+    vector_destroy(&v);
+    return 1;
+}
+
 // ===== RUN LARGE DATASET TESTS =====
 void VectorLargeTests() {
     int total=0, passed=0;
@@ -446,6 +519,8 @@ void VectorLargeTests() {
     RUN(test_large_find_bfind);
     RUN(test_large_contains);
     RUN(test_large_struct_qsort);
+    RUN(test_large_map_foreach);
+    RUN(test_mixed_large);
     RUN(test_large_map_foreach);
 
     #undef RUN

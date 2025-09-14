@@ -4,6 +4,7 @@ This document provides detailed information about the Vector module, a dynamic a
 
 ## Table of Contents
 - [Vector Structure](#structure)
+- [Key Features](#key-features)
 - [Initialization and Destruction](#initialization-and-destruction)
   - vector_init
   - vector_destroy
@@ -47,7 +48,11 @@ This document provides detailed information about the Vector module, a dynamic a
   - vector_qsort_partition
 - [Example Usage](#example-usage)
 
-
+## Key Features
+- vector_init / vector_destroy – setup and cleanup
+- vector_push / vector_pop – add/remove elements
+- vector_at / vector_first / vector_last – access elements
+- vector_qsort / vector_find – algorithms
 
 ## Structure
 

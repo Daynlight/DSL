@@ -1,56 +1,94 @@
+/*
+ * MyProgram - short description
+ * Copyright (C) 2025 Your Name
+ *
+ * This file is part of MyProgram.
+ *
+ * MyProgram is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * MyProgram is distributed in the hope that it will be us eful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+
+ 
+
 #include "vector.h"
+
+///#################### memory #####################///
+///[ | | | | | | | | | | | | | | | | | | | | | | | ]///
+/// ^ first                                  last ^///
 
 void vector_init(Vector* vec, unsigned int size_elem) {
   if(!vec) return;
   vec->capacity = 1;
+  vec->buckets = 0;
   vec->size = 0;
   vec->size_elem = size_elem;
+  vec->first = 0;
+  vec->last = vec->capacity - 1;
   vec->sorted = 1;
+  vec->hashed = 0;
   vec->data = calloc(vec->capacity, size_elem);
+  vec->hashmap = NULL;
   if (!vec->data) vec->capacity = 0;
 };
 
 void vector_destroy(Vector *vec) {
   if(!vec) return;
   free(vec->data);
+  free(vec->hashmap);
   memset(vec, 0, sizeof(Vector));
-};
-
-void vector_resize(Vector *vec) {
-  if (!vec) return;
-  
-  unsigned int new_capacity = vec->capacity ? vec->capacity * 2 : 1;
-  void* temp = realloc(vec->data, new_capacity * vec->size_elem);
-  if(!temp) return;
-  
-  vec->data = temp;
-  vec->capacity = new_capacity;
-};
-
-void vector_reserve(Vector *vec, unsigned int additional) {
-  if (!vec || additional == 0) return;
-  
-  unsigned int target_capacity = vec->capacity + additional;
-  void* temp = realloc(vec->data, target_capacity * vec->size_elem);
-  if(!temp) return;
-  
-  vec->data = temp;
-  vec->capacity = target_capacity;
 };
 
 void vector_set_capacity(Vector *vec, unsigned int new_capacity) {
   if (!vec) return;
-  
-  if (vec->size > new_capacity) vec->size = new_capacity;
+  if (vec->size > new_capacity) new_capacity = vec->size;
 
-  if (new_capacity <= 0) new_capacity = 1;
+  void* newData = calloc(new_capacity, vec->size_elem);
+  if(!newData) return;
+  unsigned int first_size = vec->last + 1;
+  unsigned int second_size = vec->first > 0 ? vec->capacity - vec->first : 0;
 
-  void* temp = realloc(vec->data, new_capacity * vec->size_elem);
-  if(!temp) return;
+  // Copy First Part
+  if(first_size)
+    memcpy(newData, vec->data, first_size * vec->size_elem);
   
-  vec->data = temp;
+  // Copy Second Part
+  if(second_size){
+    void* src = (char*)vec->data + (vec->capacity - second_size) * vec->size_elem;
+    void* dest = (char*)newData + (new_capacity - second_size) * vec->size_elem;
+    memcpy(dest, src, second_size * vec->size_elem);
+  }
+
+  // Set Variables
+  if(!newData) return;
+  free(vec->data);
+  vec->data = newData;
   vec->capacity = new_capacity;
+  vec->first = vec->first > 0 ? new_capacity - second_size : 0;
+  vec->hashed = 0;
 };
+
+void vector_resize(Vector *vec) {
+  if (!vec) return;
+  unsigned int new_capacity = vec->capacity ? vec->capacity * 2 : 1;
+  vector_set_capacity(vec, new_capacity);
+};
+
+void vector_reserve(Vector *vec, unsigned int additional) {
+  if (!vec || additional == 0) return;
+  vector_set_capacity(vec, vec->capacity + additional);
+};
+
 
 void vector_shrink(Vector *vec) {
   vector_set_capacity(vec, vec->size);
@@ -78,27 +116,24 @@ char vector_is_empty(Vector *vec) {
 
 void vector_push(Vector *vec, void *el) {
   if(!vec || !el || !vec->data) return;
-
-  if(vec->size >= vec->capacity) vector_resize(vec);
   if (!vec->data) return;
+  if(vec->size >= vec->capacity) vector_resize(vec);
+  
+  vec->last = vec->last >= vec->capacity - 1 ? 0 : vec->last + 1;
+  memcpy((char*)vec->data + vec->last * vec->size_elem, el, vec->size_elem);
 
-  void* target = (char*)vec->data + vec->size * vec->size_elem;
-  memcpy(target, el, vec->size_elem);
   vec->size++;
   vec->sorted = 0;
 };
 
 void vector_push_front(Vector *vec, void *el) {
   if (!vec || !el) return;
-
-  if (vec->size >= vec->capacity) vector_resize(vec);
   if (!vec->data) return;
+  if (vec->size >= vec->capacity) vector_resize(vec);
 
-  if (vec->size > 0) {
-    memmove((char*)vec->data + vec->size_elem, vec->data, vec->size * vec->size_elem);
-  }
-
-  memcpy(vec->data, el, vec->size_elem);
+  vec->first = vec->first <= 0 ? vec->capacity - 1 : vec->first - 1;
+  memcpy((char*)vec->data + vec->first * vec->size_elem, el, vec->size_elem);
+  
   vec->size++;
   vec->sorted = 0;
 };
@@ -126,12 +161,12 @@ void vector_push_at(Vector *vec, unsigned int index, void *el) {
 void vector_pop(Vector *vec, void *el) {
   if(!vec || !el) return;
   if (!vec->data) return;
-
   if(vec->size <= 0) return;
 
+  vector_last(vec, el);
+  vec->last = vec->last <= 0 ? vec->capacity - 1 : vec->last - 1;
+  
   vec->size--;
-  void* target = (char*)vec->data + vec->size * vec->size_elem;
-  memcpy(el, target, vec->size_elem);
 }
 
 void vector_pop_front(Vector *vec, void *el){
@@ -139,10 +174,9 @@ void vector_pop_front(Vector *vec, void *el){
   if (vec->size <= 0) return;
   if (!vec->data) return;
 
-  memcpy(el, vec->data, vec->size_elem);
-    if (vec->size > 1)
-      memmove(vec->data, (char*)vec->data + vec->size_elem, (vec->size - 1) * vec->size_elem);
-
+  vector_first(vec, el);
+  vec->first = vec->first >= vec->capacity - 1 ? 0 : vec->first + 1;
+  
   vec->size--;
 };
 
@@ -185,20 +219,19 @@ void vector_erase(Vector *vec, unsigned int index) {
 
 void vector_first(Vector *vec, void *el) {
   if(!vec || !el || vec->size == 0) return;
-  memcpy(el, vec->data, vec->size_elem);
+  void* target = (char*)vec->data + vec->first * vec->size_elem;
+  memcpy(el, target, vec->size_elem);
 };
 
 void vector_last(Vector *vec, void *el) {
   if(!vec || !el || vec->size == 0) return;
-  memcpy(el, (char*)vec->data + (vec->size - 1) * vec->size_elem, vec->size_elem);
+  void* target = (char*)vec->data + vec->last * vec->size_elem;
+  memcpy(el, target, vec->size_elem);
 };
 
 void vector_at(Vector *vec, unsigned int index, void *el) {
-  if(!vec || !el) return;
-  if (!vec->data) return;
-
-  if(vec->size <= index) return;
-  
+  if(!vec || !el || !vec->data) return;
+  if(vec->first < index && vec->last > index) return;
   void* target = (char*)vec->data + index * vec->size_elem;
   memcpy(el, target, vec->size_elem);
 };
