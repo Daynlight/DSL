@@ -31,7 +31,11 @@
 #include <stdlib.h>
 #include <stdexcept>
 #include <string.h>
+#include "Math/ModuloZ/ModuloZ.h"
 
+//namespace Essential
+namespace Essentials {
+  
 // HashMap for lookup
 struct HashMap{
   unsigned int hash;
@@ -42,21 +46,23 @@ struct HashMap{
 template<typename T>
 class Vector {
 private:
-  T* data;
-  Vector<HashMap>* hashmap = nullptr;
-  unsigned int buckets;
-  unsigned int capacity;
-  unsigned int size;
+  T* data = new T[2];
+  [[maybe_unused]] Vector<HashMap>* hashmap = nullptr;
+  [[maybe_unused]] unsigned int buckets = 0;
+  unsigned int capacity = 2;
+  unsigned int size = 0;
 
-  char sorted;
-  char hashed;
+  bool sorted = 1;
+  bool hashed = 1;
 
-  unsigned int head;
-  unsigned int back;
+  Math::ModuloZ head = Math::ModuloZ(2, 1);
+  Math::ModuloZ back = Math::ModuloZ(2, 0);
+
+private:
+  constexpr bool inRange(unsigned int index) const noexcept;
 
 public:
   // Constructor/Destructor
-  Vector();    // O(1)
   ~Vector() noexcept;    // O(1)
 
   // Vector management
@@ -73,7 +79,7 @@ public:
 
   // Pushers
   void pushHead(T el);    // O(log2(n))
-  void pushFront(T el);    // O(log2(n))
+  void pushBack(T el);    // O(log2(n))
   void pushAt(unsigned int index, T el);    // O(log2(n))
 
   // Popers
@@ -104,5 +110,7 @@ public:
   // void qsort_helper(int (*cmp)(const void*, const void*), int low, int high);
   // int qsort_partition(int (*cmp)(const void*, const void*), int low, int high);
 };
+};
+
 
 #include "vector.hpp"

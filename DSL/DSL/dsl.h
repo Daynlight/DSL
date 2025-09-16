@@ -21,10 +21,7 @@
 
  
 
-#ifndef PragmaDSL
-#define PragmaDSL
+#pragma once
 
-#include "Vector/vector.h"
-
-
-#endif
+#include "Essentials/Vector/vector.h"
+#include "Math/ModuloZ/ModuloZ.h"
