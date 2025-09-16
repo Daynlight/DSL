@@ -18,6 +18,26 @@ add_subdirectory(vendor/fmt)
 
 add_subdirectory(DSL)
 
+########################### Main Project ########################### 
+project(Main LANGUAGES CXX)
+
+set(headers
+  DSL/
+  vendor/
+  Tests/
+  Examples/
+)
+
+set(src 
+  main.cpp
+)
+
+add_executable(Main ${src} ${headers})
+
+target_include_directories(Main PRIVATE ${headers})
+target_link_libraries(Main PRIVATE DSL)
+target_link_libraries(Main PRIVATE fmt)
+
 ############################## Set for VS ##############################
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Main)
 set_property(TARGET Main PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}$<CONFIG>") 

@@ -1,22 +1,18 @@
 cmake_minimum_required(VERSION 3.10)
 
-add_subdirectory(DSL)
-
-project(Main LANGUAGES CXX)
+project(DSL LANGUAGES CXX)
 
 set(headers
-  DSL
-  vendor/
-  Tests
-  Examples
+  Essentials/
+  "Math/"
 )
 
-set(src 
-  main.cpp
+set(src
+  dsl.cpp
+  Essentials/Vector/vector.hpp
+  Math/ModuloZ/ModuloZ.hpp
 )
 
-add_executable(Main ${src} ${headers})
+add_library(DSL STATIC ${headers} ${src})
 
-target_include_directories(Main PRIVATE ${headers})
-target_link_libraries(Main PRIVATE DSL)
-target_link_libraries(Main PRIVATE fmt)
+target_include_directories(DSL PUBLIC ${headers})
