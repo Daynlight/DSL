@@ -1,6 +1,7 @@
 #pragma once
+#include <fmt/core.h>
+#include <fmt/color.h>
 #include "dsl.h"
-#include <iostream>
 
 namespace Examples{
 void Vector() {
@@ -13,6 +14,6 @@ void Vector() {
     vec.pushHead(x);
 
     int value = vec.at(1); // access second element
-    std::cout << "Second element: " << value << std::endl;
+    fmt::print(fg(fmt::color::blue) , "Second element: {:d}", value);
 };
 };
