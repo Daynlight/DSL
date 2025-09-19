@@ -1,15 +1,15 @@
 /*
- * MyProgram - short description
+ * DSL - short description
  * Copyright (C) 2025 Your Name
  *
- * This file is part of MyProgram.
+ * This file is part of DSL.
  *
- * MyProgram is free software: you can redistribute it and/or modify
+ * DSL is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * MyProgram is distributed in the hope that it will be useful,
+ * DSL is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
@@ -23,12 +23,43 @@
 
 #include "vector.h"
 
+template<typename T>
+Essentials::Vector<T>::Vector() noexcept 
+  :data(new T[capacity]) {};
+
 template <typename T>
+inline Essentials::Vector<T>::Vector(unsigned int capacity) noexcept {
+  setCapacity(capacity);
+};
+
+template <typename T>
+inline Essentials::Vector<T>::Vector(const Vector &other) noexcept
+  :capacity(other.capacity), size(other.size), 
+  _head(other._head), _back(other._back), data(new T[other.capacity]) {
+  if(size) {
+    unsigned int first_chunk = std::min(size, capacity - _back);
+    unsigned int second_chunk = size - first_chunk;
+
+    std::copy(other.data + _back, other.data + _back + first_chunk, data);
+    if (second_chunk)
+        std::copy(other.data, other.data + second_chunk, data + first_chunk);
+  };
+};
+
+template <typename T>
+inline Essentials::Vector<T>::Vector(Vector &&other) noexcept 
+  :capacity(other.capacity), size(other.size), 
+  _head(other._head), _back(other._back), data(other.data){
+  other.data = new T[2];
+  other._head = Math::ModuloZ(2, 1);
+  other._back = Math::ModuloZ(2, 0);
+  other.size = 0;
+  other.capacity = 2;
+};
+
+template<typename T>
 Essentials::Vector<T>::~Vector() noexcept {
-  if(data) 
-    delete[] data;
-  if(hashmap) 
-    delete hashmap;
+  delete[] data;
 };
 
 template<typename T>
@@ -41,10 +72,10 @@ void Essentials::Vector<T>::setCapacity(unsigned int new_capacity) {
   T* newData = new T[new_capacity];
 
   if(size){
-    unsigned int first_chunk = std::min(size, capacity - back);
+    unsigned int first_chunk = std::min(size, capacity - _back);
     unsigned int second_chunk = size - first_chunk;
 
-    std::copy(data + back, data + back + first_chunk, newData);
+    std::copy(data + _back, data + _back + first_chunk, newData);
     if (second_chunk)
         std::copy(data, data + second_chunk, newData + first_chunk);
   };
@@ -53,10 +84,15 @@ void Essentials::Vector<T>::setCapacity(unsigned int new_capacity) {
   delete[] data;
   data = newData;
   capacity = new_capacity;
-  back = Math::ModuloZ(new_capacity, 0);
-  head = size <= 0 ? Math::ModuloZ(new_capacity, new_capacity) 
+  _back = Math::ModuloZ(new_capacity, 0);
+  _head = size <= 0 ? Math::ModuloZ(new_capacity, new_capacity) 
                    : Math::ModuloZ(new_capacity, size);
-  head -= 1;
+  _head -= 1;
+};
+
+template <typename T>
+inline void Essentials::Vector<T>::reorder() {
+  setCapacity(capacity);
 };
 
 template <typename T>
@@ -88,11 +124,6 @@ constexpr unsigned int Essentials::Vector<T>::getCapacity() const noexcept {
 };
 
 template<typename T>
-constexpr bool Essentials::Vector<T>::getSorted() const noexcept {
-  return sorted;
-};
-
-template<typename T>
 constexpr bool Essentials::Vector<T>::isEmpty() const noexcept {
   return size == 0;
 };
@@ -105,11 +136,10 @@ void Essentials::Vector<T>::pushHead(T el) {
   if(size >= capacity) 
     resize();
   
-  head += 1;
-  data[head] = el;
+  _head += 1;
+  data[_head] = el;
   
   size++;
-  sorted = 0;
 };
 
 template<typename T>
@@ -120,21 +150,32 @@ void Essentials::Vector<T>::pushBack(T el) {
   if(size >= capacity) 
     resize();
 
-  back -= 1;
-  data[back] = el;
+  _back -= 1;
+  data[_back] = el;
 
   size++;
-  sorted = 0;
 };
 
 template <typename T>
 constexpr inline bool Essentials::Vector<T>::inRange(unsigned int index) const noexcept {
-  return back <= head ? (index >= back && index <= head)
-                      : (index >= back || index <= head);
+  return _back <= _head ? (index >= _back && index <= _head)
+                        : (index >= _back || index <= _head);
+}
+
+template <typename T>
+inline constexpr unsigned int Essentials::Vector<T>::toPhysicalIndex(int index) const noexcept {
+  unsigned int p_index;
+  if(index >= 0)
+    p_index = Math::ModuloZ(capacity, _back + index);
+  else
+    p_index = Math::ModuloZ(capacity, _head + index + 1);
+  return p_index;
 }
 
 template<typename T>
-void Essentials::Vector<T>::pushAt(unsigned int index, T el) {
+void Essentials::Vector<T>::pushAt(int index, T el) {
+  unsigned int p_index = toPhysicalIndex(index);
+
   if(!inRange(index)) 
     throw std::logic_error("Can't pushAt, index out of range");
   
@@ -144,31 +185,18 @@ void Essentials::Vector<T>::pushAt(unsigned int index, T el) {
   if(size >= capacity)
     resize();
 
-  if(index < head){
-    Math::ModuloZ iterator = Math::ModuloZ(capacity, index);
-    Math::ModuloZ iterator_next = Math::ModuloZ(capacity, index + 1);
-    for(unsigned int i = index; i < head; i++){
-      data[iterator] = data[iterator_next];
-      iterator += 1;
-      iterator_next += 1;
-    }
-    data[index] = el;
-    head += 1;
-  }
-  else {
-    Math::ModuloZ iterator = Math::ModuloZ(capacity, index);
-    Math::ModuloZ iterator_next = Math::ModuloZ(capacity, index);
+  Math::ModuloZ iterator = Math::ModuloZ(capacity, _head);
+  Math::ModuloZ iterator_next = Math::ModuloZ(capacity, _head + 1);
+  Math::ModuloZ copy_size = _head - p_index + 1;
+  for(unsigned int i = 0; i < copy_size; i++){
+    data[iterator_next] = data[iterator];
+    iterator -= 1;
     iterator_next -= 1;
-    for(unsigned int i = index; i > back; i--){
-      data[iterator] = data[iterator_next];
-      iterator -= 1;
-      iterator_next -= 1;
-    }
-    back -= 1;
   }
+  data[p_index] = el;
+  _head += 1;
 
   size++;
-  sorted = 0;
 }
 
 template<typename T>
@@ -179,8 +207,8 @@ const T Essentials::Vector<T>::popHead() {
   if (!data) 
     throw std::runtime_error("Can't popHead, data is nullptr");
 
-  T temp = last();
-  head -= 1;
+  T temp = head();
+  _head -= 1;
   
   size--;
   return temp;
@@ -194,44 +222,34 @@ const T Essentials::Vector<T>::popBack(){
   if (!data) 
     throw std::runtime_error("Can't popBack, data is nullptr");
 
-  T temp = first();
-  back += 1;
+  T temp = back();
+  _back += 1;
   
   size--;
   return temp;
 };
 
 template<typename T>
-const T Essentials::Vector<T>::popAt(unsigned int index) {
-  if(index > head && index < back) 
+const T Essentials::Vector<T>::popAt(int index) {
+  unsigned int p_index = toPhysicalIndex(index);
+
+  if(!inRange(index)) 
     throw std::out_of_range("Can't popAt, index out of range");
   
   if (!data) 
     throw std::runtime_error("Can't popAt, data is nullptr");
 
-  T temp = data[index];
+  T temp = data[p_index];
 
-  if(index < head){
-    Math::ModuloZ iterator = Math::ModuloZ(capacity, index);
-    Math::ModuloZ iterator_next = Math::ModuloZ(capacity, index + 1);
-    for(unsigned int i = index; i < head; i++){
-      data[iterator] = data[iterator_next];
-      iterator += 1;
-      iterator_next += 1;
-    } 
-    head -= 1;
-  }
-  else {
-    Math::ModuloZ iterator = Math::ModuloZ(capacity, index);
-    Math::ModuloZ iterator_next = Math::ModuloZ(capacity, index);
-    iterator_next -= 1;
-    for(unsigned int i = index; i > back; i--){
-      data[iterator] = data[iterator_next];
-      iterator -= 1;
-      iterator_next -= 1;
-    }
-    back += 1;
-  }
+  Math::ModuloZ iterator = Math::ModuloZ(capacity, p_index);
+  Math::ModuloZ iterator_next = Math::ModuloZ(capacity, p_index + 1);
+  Math::ModuloZ copy_size = _head - p_index + 1;
+  for(unsigned int i = 0; i <= copy_size; i++){
+    data[iterator] = data[iterator_next];
+    iterator += 1;
+    iterator_next += 1;
+  } 
+  _head -= 1;
 
   size--;
   return temp;
@@ -242,14 +260,15 @@ void Essentials::Vector<T>::clear() noexcept {
   delete[] data;
   data = new T[capacity];
   size = 0;
-  head = capacity - 1;
-  back = 0;
-  sorted = 1;
+  _head = capacity - 1;
+  _back = 0;
 }
 
 template<typename T>
-void Essentials::Vector<T>::erase(unsigned int index) noexcept {
-  if(index > head && index < back) 
+void Essentials::Vector<T>::erase(int index) noexcept {
+  unsigned int p_index = toPhysicalIndex(index);
+
+  if(!inRange(p_index)) 
     return;
 
   if (!data) 
@@ -259,203 +278,36 @@ void Essentials::Vector<T>::erase(unsigned int index) noexcept {
 };
 
 template<typename T>
-T& Essentials::Vector<T>::first() const {
+T& Essentials::Vector<T>::back() {
   if(isEmpty()) 
     throw std::out_of_range("Can't first, vector is empty");
 
   if (!data) 
     throw std::runtime_error("Can't first, data is nullptr");
 
-  return data[back];
+  return data[_back];
 };
 
 template<typename T>
-T& Essentials::Vector<T>::last() const {
+T& Essentials::Vector<T>::head() {
   if(isEmpty()) 
     throw std::out_of_range("Can't last, vector is empty");
 
   if (!data) 
     throw std::runtime_error("Can't last, data is nullptr");
 
-  return data[head];
+  return data[_head];
 };
 
 template<typename T>
-T& Essentials::Vector<T>::at(unsigned int index) const {
-  if(index > head && index < back) 
+T& Essentials::Vector<T>::at(int index) {
+  unsigned int p_index = toPhysicalIndex(index);
+  
+  if(!inRange(p_index)) 
     throw std::out_of_range("Can't at, index out of range");
 
   if (!data) 
     throw std::runtime_error("Can't at, data is nullptr");
 
-  return data[index];
+  return data[p_index];
 };
-
-// void vector_foreach(, void (*func)(void *, void *), void *user_data) {
-//   if (!vec || !vec->data || !func) return;
-
-//   for (unsigned int i = 0; i < vec->size; i++) {
-//     void *elem = (char*)vec->data + i * vec->size_elem;
-//     func(elem, user_data);
-//   }
-// }
-
-// unsigned int vector_find(, void *el, int (*cmp)(const void *, const void *))
-// {
-//   if (!vec || !vec->data || !el) return 0;
-//   if(vec->sorted == 1) return vector_bfind(vec, el, cmp);
-//   for (unsigned int i = 0; i < vec->size; i++) {
-//     void *elem = (char*)vec->data + i * vec->size_elem;
-//     if (cmp(elem, el) == 0) return i;
-//   }
-//   return vec->size;
-// };
-
-// unsigned int vector_bfind(, void *el, int (*cmp)(const void *, const void *)){
-//   if (!vec || !vec->data || !el || !cmp || vec->size == 0) 
-//       return vec->size;
-
-//   unsigned int left = 0;
-//   unsigned int right = vec->size - 1;
-
-//   while (left <= right) {
-//     unsigned int mid = left + (right - left) / 2;
-//     void *mid_elem = (char*)vec->data + mid * vec->size_elem;
-//     int comparison = cmp(mid_elem, el);
-
-//     if (comparison == 0) {
-//       return mid; 
-//     } else if (comparison < 0) {
-//       left = mid + 1;
-//     } else {
-//       if (mid == 0) break;
-//       right = mid - 1;
-//     }
-//   }
-
-//   return vec->size;
-// };
-
-// unsigned int vector_find_if(, int (*predicate)(const void *)) {
-//   if (!vec || !vec->data || !predicate || vec->size_elem == 0) return vec->size;
-//   if(vec->sorted == 1) return vector_bfind_if(vec, predicate);
-//   for (unsigned int i = 0; i < vec->size; i++) {
-//     void *elem = (char*)vec->data + i * vec->size_elem;
-//     if (predicate(elem)) return i;
-//   }
-//   return vec->size;
-// };
-
-// unsigned int vector_bfind_if(, int (*predicate)(const void *)){
-//   if (!vec || !vec->data || !predicate || vec->size_elem == 0) return vec->size;
-
-//   unsigned int left = 0;
-//   unsigned int right = vec->size;
-//   unsigned int result = vec->size;
-
-//   while (left < right) {
-//     unsigned int mid = left + (right - left) / 2;
-//     void *mid_elem = (char*)vec->data + mid * vec->size_elem;
-
-//     if (predicate(mid_elem)) {
-//         result = mid;
-//         right = mid;
-//     } else {
-//         left = mid + 1;
-//     }
-//   }
-
-//   return result;
-// };
-
-// char vector_contains(, void *el, int (*cmp)(const void *, const void *)) {
-//   if (!vec || !vec->data || vec->size == 0) return 0;
-//   if(vec->sorted == 1) return vector_bcontains(vec, el, cmp);
-//   for (size_t i = 0; i < vec->size; i++) {
-//     void *elem = (char*)vec->data + i * vec->size_elem;
-//     if (cmp(elem, el) == 0) return 1;
-//   }
-//   return 0;
-// }
-
-// char vector_bcontains(, void *el, int (*cmp)(const void *, const void *)) {
-//   if (!vec || !vec->data || vec->size == 0) return 0;
-
-//   size_t left = 0;
-//   size_t right = vec->size - 1;
-
-//   while (left <= right) {
-//     size_t mid = left + (right - left) / 2;
-//     void *mid_elem = (char*)vec->data + mid * vec->size_elem;
-//     int comparison = cmp(mid_elem, el);
-
-//     if (comparison == 0) {
-//         return 1;
-//     } else if (comparison < 0) {
-//         left = mid + 1;
-//     } else {
-//         if (mid == 0) break;
-//         right = mid - 1;
-//     }
-//   }
-
-//   return 0;
-// };
-
-// void vector_swap(Vector *a, Vector *b) {
-//   if (!a || !b) return;
-
-//   Vector temp = *a;
-//   *a = *b;
-//   *b = temp; 
-// };
-
-// void vector_map(, void (*func)(void *)) {
-//   if (!vec || !vec->data || !func) return;
-
-//   for (unsigned int i = 0; i < vec->size; i++) {
-//     void *elem = (char*)vec->data + i * vec->size_elem;
-//     func(elem);
-//   }
-// };
-
-// void vector_qsort(, int (*cmp)(const void *, const void *)) {
-//   if (!vec || !vec->data || vec->size < 2) {
-//     vec->sorted = 1;
-//     return;
-//   };
-//   vector_qsort_helper(vec, cmp, 0, vec->size - 1);
-//   vec->sorted = 1;
-// };
-
-// void vector_qsort_helper(, int (*cmp)(const void *, const void *), int low, int high) {
-//   if (low < high) {
-//     int pi = vector_qsort_partition(vec, cmp, low, high);
-//     if (pi > 0) vector_qsort_helper(vec, cmp, low, pi - 1); 
-//     vector_qsort_helper(vec, cmp, pi + 1, high);
-//   }
-// };
-
-// int vector_qsort_partition(, int (*cmp)(const void *, const void *), int low, int high) {
-//   void *pivot = (char*)vec->data + high * vec->size_elem;
-//   int i = low;
-//   for (int j = low; j < high; j++) {
-//     void *elem = (char*)vec->data + j * vec->size_elem;
-//     if (cmp(elem, pivot) < 0) {
-//       char *a = (char*)vec->data + i * vec->size_elem;
-//       char *b = (char*)vec->data + j * vec->size_elem;
-//       char tmp[vec->size_elem];
-//       memcpy(tmp, a, vec->size_elem);
-//       memcpy(a, b, vec->size_elem);
-//       memcpy(b, tmp, vec->size_elem);
-//       i++;
-//     }
-//   }
-//   char *a = (char*)vec->data + i * vec->size_elem;
-//   char *b = (char*)vec->data + high * vec->size_elem;
-//   char tmp[vec->size_elem];
-//   memcpy(tmp, a, vec->size_elem);
-//   memcpy(a, b, vec->size_elem);
-//   memcpy(b, tmp, vec->size_elem);
-//   return i;
-// };
