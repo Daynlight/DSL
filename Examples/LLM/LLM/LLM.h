@@ -54,7 +54,7 @@ private:
   static constexpr size_t input_size = context_size * vocab_size;
   static constexpr size_t response_size = 256;
 
-  NN::NeuralNetwork<input_size, 4096, 2048, 1024, vocab_size, 1> model;
+  NN::NeuralNetwork<input_size, 8192, 4096, 2048, 1024, vocab_size, 1> model;
 
   std::filesystem::path path_to_tokens = std::filesystem::path(__FILE__).parent_path() / "../data/tokens";
 
