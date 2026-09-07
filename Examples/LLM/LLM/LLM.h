@@ -44,7 +44,7 @@ private:
   unsigned int learn_samples = 1000;
   unsigned int epoch = 200;
   unsigned int learning_set_repeats = 1;
-  unsigned int max_lr_reductions = 3;
+  unsigned int max_lr_reductions = 5;
   bool additional_acuracy_show = true;
   bool balanced_learning = false;
   bool dynamic_lr = false;
@@ -54,7 +54,7 @@ private:
   static constexpr size_t input_size = context_size * vocab_size;
   static constexpr size_t response_size = 256;
 
-  NN::NeuralNetwork<input_size, 8192, 8192, 4096, 4096, 2048, 2048, vocab_size, 1> model;
+  NN::NeuralNetwork<input_size, 4096, 2048, 1024, vocab_size, 1> model;
 
   std::filesystem::path path_to_tokens = std::filesystem::path(__FILE__).parent_path() / "../data/tokens";
 

@@ -21,3 +21,6 @@ CMakeUserPresets.json
 build/
 .vscode/
 vendor/
+
+model
+tokens
