@@ -20,6 +20,7 @@
 #include <string_view>
 #include <cstdint>
 #include <limits>
+#include <chrono>
 
 #include <NeuralNetwork/NeuralNetwork.h>
 #include <NeuralNetwork/Utils.h>

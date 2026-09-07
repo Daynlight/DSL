@@ -127,6 +127,7 @@ void LLM::LLM::loadModelFromFile() noexcept {
     model.setWeights<6>(-0.04437, 0.04437);
     return;
   };
+
   std::ifstream file(path_to_model_data, std::ios::binary);
   if(!file.is_open()) return;
 
@@ -251,29 +252,20 @@ void LLM::LLM::setModel() noexcept {
 
 
 void LLM::LLM::learningInfo(bool show_learning_ifno, const std::array<double, vocab_size>& target, size_t expected, double &ce_sum, double &mse_sum, size_t &correct, size_t &log_samples) noexcept {
-
   double* result = model.getActivatedResult();
 
   size_t predicted = 0;
 
-  for(size_t k = 1; k < vocab_size; k++)
-    if(result[k] > result[predicted])
-      predicted = k;
-
+  for(size_t k = 1; k < vocab_size; k++) if(result[k] > result[predicted]) predicted = k;
+  
   double mse = 0.0;
-
   for(size_t k = 0; k < vocab_size; k++){
-
     double diff = result[k] - target[k];
-
     mse += diff * diff / 2.0;
-
   };
-
   mse /= vocab_size;
 
   double probability = result[expected];
-
   double ce = -std::log(std::max(probability, 1e-12));
 
   mse_sum += mse;
@@ -282,9 +274,7 @@ void LLM::LLM::learningInfo(bool show_learning_ifno, const std::array<double, vo
   log_samples++;
 
   if(show_learning_ifno){
-
     fmt::println("");
-
     fmt::println(
       "Average MSE: {}, CE: {}, Accuracy: {}%",
       mse_sum / log_samples,
@@ -296,9 +286,7 @@ void LLM::LLM::learningInfo(bool show_learning_ifno, const std::array<double, vo
     ce_sum = 0.0;
     correct = 0;
     log_samples = 0;
-
   };
-
 };
 
 
@@ -318,34 +306,24 @@ void LLM::LLM::createTokens(const std::string& text) noexcept {
   std::istringstream stream(text);
   std::string word;
 
-  while(stream >> word)
-    frequency[word]++;
+  while(stream >> word) frequency[word]++;
 
   std::vector<std::pair<std::string, size_t>> sorted;
   sorted.reserve(frequency.size());
 
-  for(const auto& [word, count] : frequency)
-    sorted.emplace_back(word, count);
-
+  for(const auto& [word, count] : frequency) sorted.emplace_back(word, count);
   std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b){
-
     if(a.second != b.second) return a.second > b.second;
-
     return a.first < b.first;
-
   });
 
   for(const auto& [word, count] : sorted){
-
     if(tokens.size() >= vocab_size) break;
-
     if(word == "<UNK>" || word == "<PAD>") continue;
 
     size_t id = tokens.size();
-
     token_to_id.emplace(word, id);
     tokens.push_back(word);
-
   };
 
   while(tokens.size() < vocab_size){
@@ -358,7 +336,6 @@ void LLM::LLM::createTokens(const std::string& text) noexcept {
 
 
 void LLM::LLM::saveTokensToFile() const noexcept {
-
   std::ofstream file(path_to_tokens, std::ios::binary | std::ios::trunc);
   if(!file.is_open()) return;
 
@@ -366,103 +343,78 @@ void LLM::LLM::saveTokensToFile() const noexcept {
   file.write(reinterpret_cast<const char*>(&count), sizeof(count));
 
   for(const std::string& token : tokens){
-
     uint64_t size = token.size();
-
     file.write(reinterpret_cast<const char*>(&size), sizeof(size));
     file.write(token.data(), size);
-
   };
-
 };
 
 
 
 bool LLM::LLM::loadTokensFromFile() noexcept {
-
   std::ifstream file(path_to_tokens, std::ios::binary);
   if(!file.is_open()) return false;
 
   uint64_t count = 0;
   file.read(reinterpret_cast<char*>(&count), sizeof(count));
   if(!file || count != vocab_size) return false;
-  
 
   std::vector<std::string> loaded_tokens;
   std::unordered_map<std::string, size_t> loaded_ids;
 
   for(uint64_t i = 0; i < count; i++){
-
     uint64_t size = 0;
     file.read(reinterpret_cast<char*>(&size), sizeof(size));
     if(!file || size > 4096) return false;
 
     std::string token(size, '\0');
 
-    if(size > 0)
-      file.read(token.data(), size);
-
+    if(size > 0) file.read(token.data(), size);
     if(!file) return false;
-
     if(loaded_ids.contains(token)) return false;
 
     loaded_ids.emplace(token, loaded_tokens.size());
     loaded_tokens.push_back(std::move(token));
-
   };
 
-  if(loaded_tokens[unk_token] != "<UNK>" ||
-     loaded_tokens[pad_token] != "<PAD>") return false;
+  if(loaded_tokens[unk_token] != "<UNK>" || loaded_tokens[pad_token] != "<PAD>") return false;
 
   tokens = std::move(loaded_tokens);
   token_to_id = std::move(loaded_ids);
 
   return true;
-
 };
 
 
 
 std::vector<size_t> LLM::LLM::encodeTokens(const std::string& text) const noexcept {
-
   std::vector<size_t> result;
   std::istringstream stream(text);
   std::string word;
 
   while(stream >> word){
-
     auto it = token_to_id.find(word);
 
-    if(it == token_to_id.end())
-      result.push_back(unk_token);
-    else
-      result.push_back(it->second);
-
+    if(it == token_to_id.end()) result.push_back(unk_token);
+    else result.push_back(it->second);
   };
 
   return result;
-
 };
 
 
 
 std::string LLM::LLM::decodeTokens(const std::vector<size_t>& ids) const noexcept {
-
   std::string result;
 
   for(size_t id : ids){
-
     if(id >= tokens.size()) continue;
     if(id == pad_token) continue;
-
     if(!result.empty()) result += ' ';
-
     result += tokens[id];
-
   };
 
   return result;
-
 };
 
 
@@ -471,16 +423,28 @@ std::string LLM::LLM::decodeTokens(const std::vector<size_t>& ids) const noexcep
 // ======= Application ======= //
 // =========================== //
 void LLM::LLM::learn() noexcept {
-
   if(!std::filesystem::exists(path_to_learning_set) || std::filesystem::is_directory(path_to_learning_set)) return;
 
+  fmt::println(fg(fmt::color::yellow), "-- Parameters");
+  fmt::println(fg(fmt::color::blue), "Path To Learning Set: {}", path_to_learning_set);
+  fmt::println(fg(fmt::color::blue), "Path To Model Data: {}", path_to_model_data);
+  fmt::println(fg(fmt::color::blue), "Path To Tokens: {}", path_to_tokens);
+  fmt::println(fg(fmt::color::blue), "Context Size: {}", context_size);
+  fmt::println(fg(fmt::color::blue), "Vocab Size: {}", vocab_size);
+  fmt::println(fg(fmt::color::blue), "Input Size: {}", input_size);
+  fmt::println(fg(fmt::color::blue), "Epoch: {}", epoch);
+  fmt::println(fg(fmt::color::blue), "Learn Samples: {}", learn_samples);
+  fmt::println(fg(fmt::color::blue), "Learning Repeat: {}", learning_set_repeats);
+  fmt::println(fg(fmt::color::blue), "Learning Rate: {}", learning_rate);
+  fmt::println(fg(fmt::color::blue), "Dynamic Learning Rate: {}", dynamic_lr);
+  fmt::println(fg(fmt::color::blue), "Max Dynamic Learning Rate Reduction: {}", max_lr_reductions);
+  fmt::println(fg(fmt::color::blue), "Balanced Learning: {}", balanced_learning);
+  fmt::println(fg(fmt::color::blue), "Additional Info: {}", additional_acuracy_show);
+  
   fmt::println(fg(fmt::color::yellow), "-- Prepering Data");
-
   std::string text_io = readLearningSet();
   std::string text = prepareLearningSet(text_io);
-
   std::vector<size_t> encoded_text = encodeTokens(text);
-
   if(encoded_text.size() <= context_size) return;
   if(tokens.size() != vocab_size) return;
 
@@ -506,22 +470,18 @@ void LLM::LLM::learn() noexcept {
   std::vector<size_t> learning_set(learn_samples);
 
   for(size_t i = context_size; i < encoded_text.size(); i++){
-
     size_t token = encoded_text[i];
-
     if(token == unk_token || token == pad_token) continue;
 
     token_positions[token].push_back(i);
     valid_positions.push_back(i);
-
   };
 
-  for(size_t i = 0; i < vocab_size; i++)
-    if(!token_positions[i].empty()) available_tokens.push_back(i);
-
+  for(size_t i = 0; i < vocab_size; i++) if(!token_positions[i].empty()) available_tokens.push_back(i);
   if(valid_positions.empty()) return;
 
   for(unsigned int j = 0; j < epoch; j++){
+    auto last = std::chrono::steady_clock::now();
     fmt::println("learn_samples: {}", learn_samples);
     fmt::println("learning_set_repeats: {}", learning_set_repeats);
     fmt::println("valid_positions: {}", valid_positions.size());
@@ -530,32 +490,24 @@ void LLM::LLM::learn() noexcept {
     size_t epoch_samples = 0;
 
     for(unsigned int i = 0; i < learn_samples; i++){
-
       if(balanced_learning){
-
         size_t token = available_tokens[rand() % available_tokens.size()];
         const std::vector<size_t>& positions = token_positions[token];
-
         learning_set[i] = positions[rand() % positions.size()];
-
       }
       else learning_set[i] = valid_positions[rand() % valid_positions.size()];
     };
 
     fmt::println("");
     fmt::println(fg(fmt::color::yellow), "-- Epoch {}/{}", j + 1, epoch);
-
     for(unsigned int r = 0; r < learning_set_repeats; r++){
-
       double ce_sum = 0.0;
       double mse_sum = 0.0;
       size_t correct = 0;
       size_t log_samples = 0;
 
       fmt::println(fg(fmt::color::white), "-- Repeat {}/{}", r + 1, learning_set_repeats);
-
       for(unsigned int i = 0; i < learn_samples; i++){
-
         if(hasInput()){
 
           std::string input_io;
@@ -566,34 +518,24 @@ void LLM::LLM::learn() noexcept {
 
           saveModelToFile();
           return;
-
         };
 
         if(has_previous_sample){
-
-          for(size_t k = 0; k < context_size; k++)
-            input[active_input[k]] = 0.0;
-
+          for(size_t k = 0; k < context_size; k++) input[active_input[k]] = 0.0;
           target[previous_expected] = 0.0;
-
         };
 
         const size_t expected_position = learning_set[i];
         const size_t offset = expected_position - context_size;
 
         for(size_t k = 0; k < context_size; k++){
-
           const size_t index = k * vocab_size + encoded_text[offset + k];
-
           active_input[k] = index;
           input[index] = 1.0;
-
         };
 
         const size_t expected = encoded_text[expected_position];
-
         target[expected] = 1.0;
-
         previous_expected = expected;
         has_previous_sample = true;
 
@@ -601,44 +543,32 @@ void LLM::LLM::learn() noexcept {
         model.forward();
 
         if(dynamic_lr){
-
           double* result = model.getActivatedResult();
-
           epoch_ce_sum += -std::log(std::max(result[expected], 1e-12));
           epoch_samples++;
-
         };
 
         if(additional_acuracy_show){
-
           const bool show_learning_ifno = ((i + 1) % 100 == 0 || i + 1 == learn_samples);
-
           learningInfo(show_learning_ifno, target, expected, ce_sum, mse_sum, correct, log_samples);
-
         };
 
         model.backprop(target);
 
         NN::Utils::progressBar(i, learn_samples);
-
       };
-
     };
 
     if(dynamic_lr && epoch_samples > 0){
-
       double epoch_ce = epoch_ce_sum / epoch_samples;
 
       if(epoch_ce < best_ce - 0.01){
-
         best_ce = epoch_ce;
         stale_epochs = 0;
-
       }
       else stale_epochs++;
 
       if(stale_epochs >= 3 && lr_reductions < max_lr_reductions){
-
         learning_rate *= 0.5;
         learning_rate = std::max(learning_rate, 0.00001);
 
@@ -649,23 +579,23 @@ void LLM::LLM::learn() noexcept {
         lr_reductions++;
 
         fmt::println(fg(fmt::color::purple), "-- Learning rate reduced to {}", learning_rate);
-
       };
-
     };
 
+    auto now = std::chrono::steady_clock::now();
+    double elapsed = std::chrono::duration<double>(now - last).count();
+    fmt::println("Elapsed: {:.3f}s", elapsed);
+    last = now;
+    
     saveModelToFile();
-
   };
 
   saveModelToFile();
-
 };
 
 
 
 std::string LLM::LLM::getRespond(const std::string &message) noexcept {
-
   if(tokens.size() != vocab_size) return "";
 
   std::vector<size_t> context = encodeTokens(message);
@@ -678,36 +608,29 @@ std::string LLM::LLM::getRespond(const std::string &message) noexcept {
   std::array<double, input_size> input{};
 
   for(size_t i = 0; i < response_size; i++){
-
     input.fill(0.0);
 
     size_t words = std::min(context.size(), context_size);
     size_t padding = context_size - words;
     size_t start = context.size() - words;
 
-    for(size_t k = 0; k < padding; k++)
-      input[k * vocab_size + pad_token] = 1.0;
+    for(size_t k = 0; k < padding; k++) input[k * vocab_size + pad_token] = 1.0;
 
-    for(size_t k = 0; k < words; k++)
-      input[(padding + k) * vocab_size + context[start + k]] = 1.0;
+    for(size_t k = 0; k < words; k++) input[(padding + k) * vocab_size + context[start + k]] = 1.0;
 
     model.setInput(input);
     model.forward();
 
     double* result = model.getActivatedResult();
-
     size_t predicted = 0;
 
-    for(size_t j = 1; j < vocab_size; j++)
-      if(result[j] > result[predicted]) predicted = j;
+    for(size_t j = 1; j < vocab_size; j++) if(result[j] > result[predicted]) predicted = j;
 
     response.push_back(predicted);
     context.push_back(predicted);
-
   };
 
   return decodeTokens(response);
-
 };
 
 
@@ -731,36 +654,29 @@ void LLM::LLM::printHelp() const noexcept {
 
 
 void LLM::LLM::onStart() noexcept {
-
   if(!loadTokensFromFile()){
-
     if(std::filesystem::exists(path_to_model_data)){
-
       fmt::println(fg(fmt::color::red), "Vocabulary missing or invalid for existing model");
       is_running = false;
       return;
-
     };
 
     std::string text = prepareLearningSet(readLearningSet());
 
     if(text.empty()){
-
       fmt::println(fg(fmt::color::red), "Learning set is empty");
       is_running = false;
       return;
-
     };
 
     createTokens(text);
     saveTokensToFile();
-
   };
 
   loadModelFromFile();
   printHelp();
-
 };
+
 
 
 void LLM::LLM::onUpdate() noexcept {
