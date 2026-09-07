@@ -280,16 +280,37 @@ inline void NN::Layer<S, D>::backprop(Layer<D, N>& next_layer) noexcept {
   double gradient[S]{};
   double output[S]{};
 
-  workers.parallel_for(0, S, [&](size_t begin, size_t end){
-    for(size_t i = begin; i < end; i++){
-      double sum = 0.0;
-      for(size_t j = 0; j < D; j++) sum += weights[j * (S + 1) + i] * sigma_next[j];
-      gradient[i] = sum;
+  const size_t worker_count = std::min<size_t>(workers.size(), D);
+
+  if(partial_gradients.size() != worker_count) partial_gradients.resize(worker_count);
+
+  for(size_t worker = 0; worker < worker_count; worker++){
+    if(partial_gradients[worker].size() != S) partial_gradients[worker].resize(S);
+    std::fill(partial_gradients[worker].begin(), partial_gradients[worker].end(), 0.0);
+  };
+
+  workers.parallel_for(0, worker_count, [&](size_t begin, size_t end){
+    for(size_t worker = begin; worker < end; worker++){
+      double* partial = partial_gradients[worker].data();
+      const size_t row_begin = worker * D / worker_count;
+      const size_t row_end = (worker + 1) * D / worker_count;
+
+      for(size_t j = row_begin; j < row_end; j++){
+        const double factor = sigma_next[j];
+        const double* row = weights + j * (S + 1);
+        for(size_t i = 0; i < S; i++) partial[i] += row[i] * factor;
+      };
     };
   });
   workers.wait();
 
+  for(size_t worker = 0; worker < worker_count; worker++){
+    const double* partial = partial_gradients[worker].data();
+    for(size_t i = 0; i < S; i++) gradient[i] += partial[i];
+  };
+
   std::span<const double> layer(nodes, S);
+
   if(dynamic_cast<NN::Linear*>(activation.get())){
     std::memcpy(output, gradient, sizeof(output));
   }
@@ -304,7 +325,6 @@ inline void NN::Layer<S, D>::backprop(Layer<D, N>& next_layer) noexcept {
         output[i] = sum;
       };
     });
-
     workers.wait();
   };
 
@@ -314,8 +334,7 @@ inline void NN::Layer<S, D>::backprop(Layer<D, N>& next_layer) noexcept {
     for(size_t j = begin; j < end; j++){
       const double factor = learning_rate * sigma_next[j];
       double* row = weights + j * (S + 1);
-      for(size_t i = 0; i < S; i++)
-        row[i] -= factor * activated[i];
+      for(size_t i = 0; i < S; i++) row[i] -= factor * activated[i];
       row[S] -= factor;
     };
   });

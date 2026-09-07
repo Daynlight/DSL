@@ -88,6 +88,7 @@ private:
   double sigma[S];
   double weights[(S + 1) * D];
   double activated[S];
+  std::vector<std::vector<double>> partial_gradients;
   bool activated_after_forward = false;
   std::unique_ptr<NN::iActivation> activation = nullptr;
   std::unique_ptr<NN::iLoss> loss = nullptr;
