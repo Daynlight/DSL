@@ -435,13 +435,14 @@ void LLM::LLM::learn() noexcept {
   fmt::println(fg(fmt::color::blue), "Max Dynamic Learning Rate Reduction: {}", max_lr_reductions);
   fmt::println(fg(fmt::color::blue), "Balanced Learning: {}", balanced_learning);
   fmt::println(fg(fmt::color::blue), "Additional Info: {}", additional_acuracy_show);
-  
+
   fmt::println(fg(fmt::color::yellow), "-- Prepering Data");
   std::string text_io = readLearningSet();
   std::string text = prepareLearningSet(text_io);
   std::vector<size_t> encoded_text = encodeTokens(text);
   if(encoded_text.size() <= context_size) return;
   if(tokens.size() != vocab_size) return;
+  if(context_size == 0) return;
 
   fmt::println(fg(fmt::color::yellow), "-- Learning");
   fmt::println(fg(fmt::color::white), "enter to abort without lossing");
@@ -450,7 +451,7 @@ void LLM::LLM::learn() noexcept {
 
   std::array<double, input_size> input{};
   std::array<double, vocab_size> target{};
-  std::array<size_t, context_size> active_input;
+  std::array<size_t, context_size> active_input{};
 
   size_t previous_expected = 0;
   bool has_previous_sample = false;
@@ -464,10 +465,9 @@ void LLM::LLM::learn() noexcept {
   std::vector<size_t> valid_positions;
   std::vector<size_t> learning_set(learn_samples);
 
-  for(size_t i = context_size; i < encoded_text.size(); i++){
+  for(size_t i = 1; i < encoded_text.size(); i++){
     size_t token = encoded_text[i];
     if(token == unk_token || token == pad_token) continue;
-
     token_positions[token].push_back(i);
     valid_positions.push_back(i);
   };
@@ -495,6 +495,7 @@ void LLM::LLM::learn() noexcept {
 
     fmt::println("");
     fmt::println(fg(fmt::color::yellow), "-- Epoch {}/{}", j + 1, epoch);
+
     for(unsigned int r = 0; r < learning_set_repeats; r++){
       double ce_sum = 0.0;
       double mse_sum = 0.0;
@@ -502,15 +503,13 @@ void LLM::LLM::learn() noexcept {
       size_t log_samples = 0;
 
       fmt::println(fg(fmt::color::white), "-- Repeat {}/{}", r + 1, learning_set_repeats);
+
       for(unsigned int i = 0; i < learn_samples; i++){
         if(hasInput()){
-
           std::string input_io;
           std::getline(std::cin, input_io);
-
           fmt::println("");
           fmt::println(fg(fmt::color::yellow), "-- Learning aborted");
-
           saveModelToFile();
           return;
         };
@@ -521,11 +520,20 @@ void LLM::LLM::learn() noexcept {
         };
 
         const size_t expected_position = learning_set[i];
-        const size_t offset = expected_position - context_size;
+        const size_t available = std::min(expected_position, context_size);
+        const size_t words = 1 + rand() % available;
+        const size_t padding = context_size - words;
+        const size_t offset = expected_position - words;
 
-        for(size_t k = 0; k < context_size; k++){
-          const size_t index = k * vocab_size + encoded_text[offset + k];
+        for(size_t k = 0; k < padding; k++){
+          const size_t index = k * vocab_size + pad_token;
           active_input[k] = index;
+          input[index] = 1.0;
+        };
+
+        for(size_t k = 0; k < words; k++){
+          const size_t index = (padding + k) * vocab_size + encoded_text[offset + k];
+          active_input[padding + k] = index;
           input[index] = 1.0;
         };
 
@@ -549,7 +557,6 @@ void LLM::LLM::learn() noexcept {
         };
 
         model.backprop(target);
-
         NN::Utils::progressBar(i, learn_samples);
       };
     };
@@ -566,13 +573,10 @@ void LLM::LLM::learn() noexcept {
       if(stale_epochs >= 3 && lr_reductions < max_lr_reductions){
         learning_rate *= 0.5;
         learning_rate = std::max(learning_rate, 0.00001);
-
         model.setLearningRate(learning_rate);
-
         best_ce = epoch_ce;
         stale_epochs = 0;
         lr_reductions++;
-
         fmt::println(fg(fmt::color::purple), "-- Learning rate reduced to {}", learning_rate);
       };
     };
@@ -581,7 +585,6 @@ void LLM::LLM::learn() noexcept {
     double elapsed = std::chrono::duration<double>(now - last).count();
     fmt::println("Elapsed: {:.3f}s", elapsed);
     last = now;
-    
     saveModelToFile();
   };
 
@@ -595,7 +598,6 @@ std::string LLM::LLM::getRespond(const std::string &message) noexcept {
 
   std::vector<size_t> context = encodeTokens(message);
   std::vector<size_t> response;
-
   response.reserve(response_size);
 
   setModel();
