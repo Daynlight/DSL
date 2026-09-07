@@ -120,10 +120,11 @@ void LLM::LLM::loadModelFromFile() noexcept {
   if(!std::filesystem::exists(path_to_model_data) || std::filesystem::is_directory(path_to_model_data)){
     model.setWeights<0>(-0.00968, 0.00968);
     model.setWeights<1>(-0.02706, 0.02706);
-    model.setWeights<2>(-0.06275, 0.06275);
+    model.setWeights<2>(-0.02706, 0.02706);
     model.setWeights<3>(-0.06275, 0.06275);
-    model.setWeights<4>(-0.03827, 0.03827);
+    model.setWeights<4>(-0.06275, 0.06275);
     model.setWeights<5>(-0.03827, 0.03827);
+    model.setWeights<6>(-0.03827, 0.03827);
     return;
   };
 
@@ -242,8 +243,9 @@ void LLM::LLM::setModel() noexcept {
   model.setActivation<2, NN::ReLU>();
   model.setActivation<3, NN::ReLU>();
   model.setActivation<4, NN::ReLU>();
-  model.setActivation<5, NN::Softmax>();
-  model.setLoss<5, NN::CrossEntropy>();
+  model.setActivation<5, NN::ReLU>();
+  model.setActivation<6, NN::Softmax>();
+  model.setLoss<6, NN::CrossEntropy>();
 };
 
 
