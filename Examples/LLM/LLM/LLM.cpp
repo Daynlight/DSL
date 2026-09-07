@@ -620,7 +620,7 @@ std::string LLM::LLM::getRespond(const std::string &message) noexcept {
     model.setInput(input);
     model.forward();
 
-    double* result = model.getActivatedResult();
+    double* result = model.getResult();
     size_t predicted = 0;
 
     for(size_t j = 1; j < vocab_size; j++) if(result[j] > result[predicted]) predicted = j;
