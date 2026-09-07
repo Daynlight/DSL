@@ -12,9 +12,13 @@
 #include <memory>
 #include <cstring>
 #include <span>
+#include <cstdint>
+#include <initializer_list>
+#include <algorithm>
 
 #include "../Activation/Activation.h"
 #include "../Loss/Loss.h"
+#include "../ThreadPool/ThreadPool.h"
 
 
 
@@ -43,8 +47,17 @@ enum class Loss : uint32_t{
 
 
 
+class LayerWorkers {
+protected:
+  inline static ThreadPool workers{
+    std::max(1u, std::thread::hardware_concurrency())
+  };
+};
+
+
+
 template<unsigned int S, unsigned int D>
-class Layer{
+class Layer : private LayerWorkers{
 //----------------------------------------------------------------//
 //------------------------ Representation ------------------------//
 //----------------------------------------------------------------//
@@ -74,6 +87,8 @@ private:
   double nodes[S + 1];
   double sigma[S];
   double weights[(S + 1) * D];
+  double activated[S];
+  bool activated_after_forward = false;
   std::unique_ptr<NN::iActivation> activation = nullptr;
   std::unique_ptr<NN::iLoss> loss = nullptr;
   double learning_rate = 0.005;
@@ -93,10 +108,12 @@ public:
 // ============================== //
 public:
   double* getNodes() noexcept;   // O(1)
+  double* getActivatedNodes() noexcept;
   void setNodes(std::initializer_list<double> nodes) noexcept;    // O(n)
   void setNodes(std::span<const double> nodes) noexcept;    // O(n)
   double getActivatedNode(unsigned int i) const noexcept;    // O(1)
-  
+  void activateNodes() noexcept;
+
   double* getWeights() noexcept;   // O(1)
   void setWeights(std::initializer_list<double> weights) noexcept;    // O(n)
   void setWeights(const double* weights) noexcept;
@@ -125,6 +142,7 @@ public:
 
   void backprop_initial(std::initializer_list<double> target) noexcept;
   void backprop_initial(std::span<const double> target) noexcept;
+  void backprop_initial_softmax_cross_entropy_fuse(std::span<const double> target) noexcept;
   template<unsigned int N>
   void backprop(Layer<D, N> &layer) noexcept;
 

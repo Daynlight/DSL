@@ -83,6 +83,7 @@ public:
   template<std::size_t I>
   void setWeights(double min, double max) noexcept;
   double* getResult() noexcept;
+  double* getActivatedResult() noexcept;
 
 // =========================== //
 // ===== Forward/Backprop ==== //

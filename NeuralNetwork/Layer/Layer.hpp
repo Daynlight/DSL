@@ -39,6 +39,14 @@ inline double *NN::Layer<S, D>::getNodes() noexcept {
 
 
 template <unsigned int S, unsigned int D>
+inline double *NN::Layer<S, D>::getActivatedNodes() noexcept{
+  activateNodes();
+  return activated;
+};
+
+
+
+template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::setNodes(std::initializer_list<double> nodes) noexcept {
   unsigned int i = 0;
   for (auto it = nodes.begin(); it != nodes.end() && i < S; ++it, ++i) this->nodes[i] = *it;
@@ -62,6 +70,15 @@ inline double NN::Layer<S, D>::getActivatedNode(unsigned int i) const noexcept {
   std::span<const double> layer(nodes, S);
   return activation->fun(layer, i);
 
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline void NN::Layer<S, D>::activateNodes() noexcept {
+  if(activated_after_forward) return;
+  for(size_t i = 0; i < S; i++) activated[i] = getActivatedNode(i);
+  activated_after_forward = true;
 };
 
 
@@ -166,17 +183,23 @@ inline const double *NN::Layer<S, D>::getSigma() const noexcept {
 template <unsigned int S, unsigned int D>
 template <unsigned int N>
 inline void NN::Layer<S, D>::forward(NN::Layer<D, N> &layer) {
-  nodes[S] = 1.0; // bias
-  
-  for(unsigned int i = 0; i < D; i++){
-    double sum = 0;
-    for(unsigned int j = 0; j < S + 1; j++){
-      if(j != S) sum += getActivatedNode(j) * weights[i * (S + 1) + j];
-      else sum += weights[i * (S + 1) + j];
-    };
-    layer[i] = sum;
-  };
+  nodes[S] = 1.0;
+  double output[D];
 
+  activated_after_forward = false;
+  activateNodes();
+
+  workers.parallel_for(0, D, [&](size_t begin, size_t end){
+    for(unsigned int i = begin; i < end; i++){
+      double sum = weights[i * (S + 1) + S];
+      for(unsigned int j = 0; j < S; j++)
+        sum += activated[j] * weights[i * (S + 1) + j];
+      output[i] = sum;
+    };
+  });
+  workers.wait();
+
+  std::memcpy(layer.getNodes(), output, sizeof(double) * D);
   layer[D] = 1;
 };
 
@@ -191,34 +214,59 @@ inline void NN::Layer<S, D>::backprop_initial(std::initializer_list<double> targ
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::backprop_initial(std::span<const double> target) noexcept {
+  activateNodes();
+  
   if(dynamic_cast<NN::Softmax*>(activation.get()) && dynamic_cast<NN::CrossEntropy*>(loss.get())){
-    double max = nodes[0];
-
-    for(size_t i = 1; i < S; i++)
-      if(nodes[i] > max) max = nodes[i];
-
-    double sum = 0.0;
-
-    for(size_t i = 0; i < S; i++)
-      sum += std::exp(nodes[i] - max);
-
-    for(size_t i = 0; i < S && i < target.size(); i++){
-      double probability = std::exp(nodes[i] - max) / sum;
-      sigma[i] = probability - target[i];
-    };
+    backprop_initial_softmax_cross_entropy_fuse(target);
     return;
   };
-
+  
+  double output[S]{};
   std::span<const double> layer(nodes, S);
 
-  for(size_t i = 0; i < S; i++){
-    sigma[i] = 0.0;
-    for(size_t j = 0; j < S && j < target.size(); j++){
-      double loss_gradient = loss->fun_prime(getActivatedNode(j), target[j]);
+  double loss_gradient[S];
 
-      sigma[i] += loss_gradient * activation->fun_prime(layer, j, i);
-    };
+  const size_t size = std::min<size_t>(S, target.size());
+  for(size_t i = 0; i < size; i++){
+    loss_gradient[i] = loss->fun_prime(activated[i], target[i]);
   };
+
+  workers.parallel_for(0, S, [&](size_t begin, size_t end){
+    for(size_t i = begin; i < end; i++){
+      double sum = 0.0;
+      for(size_t j = 0; j < size; j++) sum += loss_gradient[j] * activation->fun_prime(layer, j, i);
+      output[i] = sum;
+    };
+  });
+  workers.wait();
+
+  std::memcpy(sigma, output, sizeof(output));
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse(std::span<const double> target) noexcept {
+  activateNodes();
+  
+  double output[S]{};
+
+  double exponent[S];
+  double max = nodes[0];
+
+  for(size_t i = 1; i < S; i++) if(nodes[i] > max) max = nodes[i];
+
+  double sum = 0.0;
+  for(size_t i = 0; i < S; i++){
+    exponent[i] = std::exp(nodes[i] - max);
+    sum += exponent[i];
+  };
+
+  const size_t size = std::min<size_t>(S, target.size());
+  for(size_t i = 0; i < size; i++) output[i] = exponent[i] / sum - target[i];
+
+  std::memcpy(sigma, output, sizeof(output));
+  activated_after_forward = false;
 };
 
 
@@ -226,38 +274,54 @@ inline void NN::Layer<S, D>::backprop_initial(std::span<const double> target) no
 template <unsigned int S, unsigned int D>
 template <unsigned int N>
 inline void NN::Layer<S, D>::backprop(Layer<D, N>& next_layer) noexcept {
+  activateNodes();
   const double* sigma_next = next_layer.getSigma();
 
-  double gradient[S];
-  for(size_t i = 0; i < S; i++){
-    gradient[i] = 0.0;
-    for(size_t j = 0; j < D; j++)
-      gradient[i] += weights[j * (S + 1) + i] * sigma_next[j];
-  };
+  double gradient[S]{};
+  double output[S]{};
+
+  workers.parallel_for(0, S, [&](size_t begin, size_t end){
+    for(size_t i = begin; i < end; i++){
+      double sum = 0.0;
+      for(size_t j = 0; j < D; j++) sum += weights[j * (S + 1) + i] * sigma_next[j];
+      gradient[i] = sum;
+    };
+  });
+  workers.wait();
 
   std::span<const double> layer(nodes, S);
-
   if(dynamic_cast<NN::Linear*>(activation.get())){
-    for(size_t i = 0; i < S; i++)
-      sigma[i] = gradient[i];
+    std::memcpy(output, gradient, sizeof(output));
   }
   else if(dynamic_cast<NN::Sigmoid*>(activation.get()) || dynamic_cast<NN::ReLU*>(activation.get())){
-    for(size_t i = 0; i < S; i++)
-      sigma[i] = gradient[i] * activation->fun_prime(layer, i, i);
+    for(size_t i = 0; i < S; i++) output[i] = gradient[i] * activation->fun_prime(layer, i, i);
   }
   else{
-    for(size_t i = 0; i < S; i++){
-      sigma[i] = 0.0;
-      for(size_t j = 0; j < S; j++)
-        sigma[i] += gradient[j] * activation->fun_prime(layer, j, i);
-    };
+    workers.parallel_for(0, S, [&](size_t begin, size_t end){
+      for(size_t i = begin; i < end; i++){
+        double sum = 0.0;
+        for(size_t j = 0; j < S; j++) sum += gradient[j] * activation->fun_prime(layer, j, i);
+        output[i] = sum;
+      };
+    });
+
+    workers.wait();
   };
 
-  for(size_t j = 0; j < D; j++){
-    for(size_t i = 0; i < S; i++)
-      weights[j * (S + 1) + i] -= learning_rate * getActivatedNode(i) * sigma_next[j];
-    weights[j * (S + 1) + S] -= learning_rate * sigma_next[j];
-  };
+  std::memcpy(sigma, output, sizeof(output));
+
+  workers.parallel_for(0, D, [&](size_t begin, size_t end){
+    for(size_t j = begin; j < end; j++){
+      const double factor = learning_rate * sigma_next[j];
+      double* row = weights + j * (S + 1);
+      for(size_t i = 0; i < S; i++)
+        row[i] -= factor * activated[i];
+      row[S] -= factor;
+    };
+  });
+  workers.wait();
+
+  activated_after_forward = false;
 };
 
 

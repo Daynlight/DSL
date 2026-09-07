@@ -10,6 +10,8 @@ cmake_minimum_required(VERSION 3.15)
 project(NeuralNetwork LANGUAGES CXX)
 
 set(src
+  ThreadPool/ThreadPool.h
+  ThreadPool/ThreadPool.hpp
   Activation/Activation.h
   Activation/Activation.hpp
   Loss/Loss.h

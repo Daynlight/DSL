@@ -133,6 +133,15 @@ inline double* NN::NeuralNetwork<First, Second, Rest...>::getResult() noexcept {
 
 
 
+template <unsigned int First, unsigned int Second, unsigned int... Rest>
+inline double *NN::NeuralNetwork<First, Second, Rest...>::getActivatedResult() noexcept {
+  if constexpr(std::tuple_size_v<LayerTuple> <= 0) return nullptr;
+  constexpr std::size_t last = std::tuple_size_v<LayerTuple> - 1;
+  return std::get<last>(layers).getActivatedNodes();
+}
+
+
+
 // =========================== //
 // ===== Forward/Backprop ==== //
 // =========================== //

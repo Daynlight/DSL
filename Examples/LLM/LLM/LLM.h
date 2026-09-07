@@ -15,6 +15,11 @@
 #include <array>
 #include <poll.h>
 #include <unistd.h>
+#include <unordered_map>
+#include <vector>
+#include <string_view>
+#include <cstdint>
+#include <limits>
 
 #include <NeuralNetwork/NeuralNetwork.h>
 #include <NeuralNetwork/Utils.h>
@@ -33,16 +38,29 @@ private:
   bool is_running = true;
 
   double learning_rate = 0.001;
-  unsigned int learn_samples = 10;
-  unsigned int epoch = 100;
-  unsigned int learning_set_repeats = 10;
+  unsigned int learn_samples = 1000;
+  unsigned int epoch = 200;
+  unsigned int learning_set_repeats = 1;
+  unsigned int max_lr_reductions = 3;
   bool additional_acuracy_show = true;
+  bool balanced_learning = false;
+  bool dynamic_lr = false;
+
   static constexpr size_t context_size = 16;
-  static constexpr size_t alphabet_size = 128;
-  static constexpr size_t input_size = context_size * alphabet_size;
+  static constexpr size_t vocab_size = 1000;
+  static constexpr size_t input_size = context_size * vocab_size;
   static constexpr size_t response_size = 256;
-  
-  NN::NeuralNetwork<input_size, 512, 256, alphabet_size, 1> model;
+
+  NN::NeuralNetwork<input_size, 8192, 8192, 4096, 4096, 2048, 2048, vocab_size, 1> model;
+
+  std::filesystem::path path_to_tokens = std::filesystem::path(__FILE__).parent_path() / "../data/tokens";
+
+  std::vector<std::string> tokens;
+  std::unordered_map<std::string, size_t> token_to_id;
+
+  static constexpr size_t unk_token = 0;
+  static constexpr size_t pad_token = 1;
+
 
 
 // ======================================== //
@@ -65,6 +83,8 @@ public:
   void setLearningEpoch(int value) noexcept;
   void setLearningSamples(int value) noexcept;
   void setLearningSetRepeats(int value) noexcept;
+  void setBalancedLearning(int value) noexcept;
+  void setDynamicLearningRate(int value) noexcept;
   void setAdditionalAcuracyShow(int value) noexcept;
   void setModelFilePath(std::filesystem::path path) noexcept;
   std::filesystem::path getModelFilePath() const noexcept;
@@ -85,7 +105,14 @@ public:
   template<size_t S>
   std::pair<double, std::array<double, S>> calculateLearningSetEntropy(const std::string& text) const noexcept;
   void setModel() noexcept;
-  void learningInfo(bool show_learning_ifno, const std::array<double, alphabet_size>& target, unsigned char expected, double& ce_sum, double& mse_sum, size_t& correct, size_t& log_samples) noexcept;
+  void learningInfo(bool show_learning_ifno, const std::array<double, vocab_size>& target, size_t expected, double& ce_sum, double& mse_sum, size_t& correct, size_t& log_samples) noexcept;
+
+  void createTokens(const std::string& text) noexcept;
+  void saveTokensToFile() const noexcept;
+  bool loadTokensFromFile() noexcept;
+
+  std::vector<size_t> encodeTokens(const std::string& text) const noexcept;
+  std::string decodeTokens(const std::vector<size_t>& ids) const noexcept;
 
 // =========================== //
 // ======= Application ======= //
