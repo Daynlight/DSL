@@ -8,6 +8,8 @@
 #pragma once
 #include <fmt/base.h>
 #include <fmt/color.h>
+#include <fmt/chrono.h>
+#include <fmt/std.h>
 
 #include <filesystem>
 #include <fstream>
