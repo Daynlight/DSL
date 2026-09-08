@@ -12,6 +12,7 @@
 
 #include "Shaders.h"
 #include "ActivationShader.h"
+#include "LossShader.h"
 
 
 namespace NN {
