@@ -20,7 +20,7 @@
 TEST(LayerConstructor, InitializesWeightsInExpectedRange){
   NN::Layer<2, 2> layer;
 
-  double* weights = layer.getWeights();
+  float* weights = layer.getWeights();
 
   for(unsigned int i = 0; i < 6; i++){
     EXPECT_GE(weights[i], -1.0);
@@ -31,7 +31,7 @@ TEST(LayerConstructor, InitializesWeightsInExpectedRange){
 TEST(LayerConstructor, InitializesDefaultLearningRate){
   NN::Layer<2, 2> layer;
 
-  EXPECT_NEAR(layer.getLearningRate(), 0.005, 1e-12);
+  EXPECT_NEAR(layer.getLearningRate(), 0.005, 1e-6);
 };
 
 TEST(LayerConstructor, InitializesDefaultLinearActivation){
@@ -66,10 +66,10 @@ TEST(LayerGetNodes, ReturnsInternalNodes){
 
   layer.setNodes({1.0, 2.0});
 
-  double* nodes = layer.getNodes();
+  float* nodes = layer.getNodes();
 
-  EXPECT_NEAR(nodes[0], 1.0, 1e-12);
-  EXPECT_NEAR(nodes[1], 2.0, 1e-12);
+  EXPECT_NEAR(nodes[0], 1.0, 1e-6);
+  EXPECT_NEAR(nodes[1], 2.0, 1e-6);
 };
 
 
@@ -82,9 +82,9 @@ TEST(LayerSetNodes, SetsNodes){
 
   layer.setNodes({1.0, 2.0, 3.0});
 
-  EXPECT_NEAR(layer.getNodes()[0], 1.0, 1e-12);
-  EXPECT_NEAR(layer.getNodes()[1], 2.0, 1e-12);
-  EXPECT_NEAR(layer.getNodes()[2], 3.0, 1e-12);
+  EXPECT_NEAR(layer.getNodes()[0], 1.0, 1e-6);
+  EXPECT_NEAR(layer.getNodes()[1], 2.0, 1e-6);
+  EXPECT_NEAR(layer.getNodes()[2], 3.0, 1e-6);
 };
 
 TEST(LayerSetNodes, StopsAtLayerSize){
@@ -92,8 +92,8 @@ TEST(LayerSetNodes, StopsAtLayerSize){
 
   layer.setNodes({1.0, 2.0, 3.0, 4.0});
 
-  EXPECT_NEAR(layer.getNodes()[0], 1.0, 1e-12);
-  EXPECT_NEAR(layer.getNodes()[1], 2.0, 1e-12);
+  EXPECT_NEAR(layer.getNodes()[0], 1.0, 1e-6);
+  EXPECT_NEAR(layer.getNodes()[1], 2.0, 1e-6);
 };
 
 
@@ -106,8 +106,8 @@ TEST(LayerGetActivatedNode, ReturnsLinearActivatedNode){
 
   layer.setNodes({2.5, -3.5});
 
-  EXPECT_NEAR(layer.getActivatedNode(0), 2.5, 1e-12);
-  EXPECT_NEAR(layer.getActivatedNode(1), -3.5, 1e-12);
+  EXPECT_NEAR(layer.getActivatedNode(0), 2.5, 1e-6);
+  EXPECT_NEAR(layer.getActivatedNode(1), -3.5, 1e-6);
 };
 
 TEST(LayerGetActivatedNode, ReturnsSigmoidActivatedNode){
@@ -116,8 +116,8 @@ TEST(LayerGetActivatedNode, ReturnsSigmoidActivatedNode){
   layer.setActivation<NN::Sigmoid>();
   layer.setNodes({0.0, 1.0});
 
-  EXPECT_NEAR(layer.getActivatedNode(0), 0.5, 1e-12);
-  EXPECT_NEAR(layer.getActivatedNode(1), 0.7310585786300049, 1e-12);
+  EXPECT_NEAR(layer.getActivatedNode(0), 0.5, 1e-6);
+  EXPECT_NEAR(layer.getActivatedNode(1), 0.7310585786300049, 1e-6);
 };
 
 
@@ -130,14 +130,14 @@ TEST(LayerGetWeights, ReturnsInternalWeights){
 
   layer.setWeights({1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
 
-  double* weights = layer.getWeights();
+  float* weights = layer.getWeights();
 
-  EXPECT_NEAR(weights[0], 1.0, 1e-12);
-  EXPECT_NEAR(weights[1], 2.0, 1e-12);
-  EXPECT_NEAR(weights[2], 3.0, 1e-12);
-  EXPECT_NEAR(weights[3], 4.0, 1e-12);
-  EXPECT_NEAR(weights[4], 5.0, 1e-12);
-  EXPECT_NEAR(weights[5], 6.0, 1e-12);
+  EXPECT_NEAR(weights[0], 1.0, 1e-6);
+  EXPECT_NEAR(weights[1], 2.0, 1e-6);
+  EXPECT_NEAR(weights[2], 3.0, 1e-6);
+  EXPECT_NEAR(weights[3], 4.0, 1e-6);
+  EXPECT_NEAR(weights[4], 5.0, 1e-6);
+  EXPECT_NEAR(weights[5], 6.0, 1e-6);
 };
 
 
@@ -150,12 +150,12 @@ TEST(LayerSetWeights, SetsWeightsFromInitializerList){
 
   layer.setWeights({1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
 
-  EXPECT_NEAR(layer.getWeights()[0], 1.0, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[1], 2.0, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[2], 3.0, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[3], 4.0, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[4], 5.0, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[5], 6.0, 1e-12);
+  EXPECT_NEAR(layer.getWeights()[0], 1.0, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[1], 2.0, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[2], 3.0, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[3], 4.0, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[4], 5.0, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[5], 6.0, 1e-6);
 };
 
 TEST(LayerSetWeights, StopsAtWeightCount){
@@ -163,23 +163,23 @@ TEST(LayerSetWeights, StopsAtWeightCount){
 
   layer.setWeights({1.0, 2.0, 3.0, 4.0});
 
-  EXPECT_NEAR(layer.getWeights()[0], 1.0, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[1], 2.0, 1e-12);
+  EXPECT_NEAR(layer.getWeights()[0], 1.0, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[1], 2.0, 1e-6);
 };
 
 TEST(LayerSetWeights, SetsWeightsFromPointer){
   NN::Layer<2, 2> layer;
 
-  const double weights[] = {6.0, 5.0, 4.0, 3.0, 2.0, 1.0};
+  const float weights[] = {6.0, 5.0, 4.0, 3.0, 2.0, 1.0};
 
   layer.setWeights(weights);
 
-  EXPECT_NEAR(layer.getWeights()[0], 6.0, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[1], 5.0, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[2], 4.0, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[3], 3.0, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[4], 2.0, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[5], 1.0, 1e-12);
+  EXPECT_NEAR(layer.getWeights()[0], 6.0, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[1], 5.0, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[2], 4.0, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[3], 3.0, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[4], 2.0, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[5], 1.0, 1e-6);
 };
 
 
@@ -192,7 +192,7 @@ TEST(LayerGetLearningRate, ReturnsLearningRate){
 
   layer.setLearningRate(0.123);
 
-  EXPECT_NEAR(layer.getLearningRate(), 0.123, 1e-12);
+  EXPECT_NEAR(layer.getLearningRate(), 0.123, 1e-6);
 };
 
 
@@ -205,7 +205,7 @@ TEST(LayerSetLearningRate, SetsLearningRate){
 
   layer.setLearningRate(0.01);
 
-  EXPECT_NEAR(layer.getLearningRate(), 0.01, 1e-12);
+  EXPECT_NEAR(layer.getLearningRate(), 0.01, 1e-6);
 };
 
 TEST(LayerSetLearningRate, AcceptsZero){
@@ -213,7 +213,7 @@ TEST(LayerSetLearningRate, AcceptsZero){
 
   layer.setLearningRate(0.0);
 
-  EXPECT_NEAR(layer.getLearningRate(), 0.0, 1e-12);
+  EXPECT_NEAR(layer.getLearningRate(), 0.0, 1e-6);
 };
 
 
@@ -292,8 +292,8 @@ TEST(LayerOperatorIndex, ReturnsNodeReference){
 
   layer.setNodes({1.0, 2.0});
 
-  EXPECT_NEAR(layer[0], 1.0, 1e-12);
-  EXPECT_NEAR(layer[1], 2.0, 1e-12);
+  EXPECT_NEAR(layer[0], 1.0, 1e-6);
+  EXPECT_NEAR(layer[1], 2.0, 1e-6);
 };
 
 TEST(LayerOperatorIndex, AllowsModifyingNode){
@@ -301,7 +301,7 @@ TEST(LayerOperatorIndex, AllowsModifyingNode){
 
   layer[0] = 42.0;
 
-  EXPECT_NEAR(layer.getNodes()[0], 42.0, 1e-12);
+  EXPECT_NEAR(layer.getNodes()[0], 42.0, 1e-6);
 };
 
 TEST(LayerOperatorIndex, AllowsBiasIndex){
@@ -309,7 +309,7 @@ TEST(LayerOperatorIndex, AllowsBiasIndex){
 
   layer[2] = 1.0;
 
-  EXPECT_NEAR(layer[2], 1.0, 1e-12);
+  EXPECT_NEAR(layer[2], 1.0, 1e-6);
 };
 
 TEST(LayerOperatorIndex, ThrowsForOutOfRangeIndex){
@@ -330,10 +330,10 @@ TEST(LayerGetSigma, ReturnsCalculatedSigma){
   layer.setNodes({3.0, 5.0});
   layer.backprop_initial({1.0, 2.0});
 
-  const double* sigma = layer.getSigma();
+  const float* sigma = layer.getSigma();
 
-  EXPECT_NEAR(sigma[0], 2.0, 1e-12);
-  EXPECT_NEAR(sigma[1], 3.0, 1e-12);
+  EXPECT_NEAR(sigma[0], 2.0, 1e-6);
+  EXPECT_NEAR(sigma[1], 3.0, 1e-6);
 };
 
 
@@ -353,8 +353,8 @@ TEST(LayerForward, CalculatesExpectedValues){
 
   layer.forward(next);
 
-  EXPECT_NEAR(next[0], 8.0, 1e-12);
-  EXPECT_NEAR(next[1], 20.0, 1e-12);
+  EXPECT_NEAR(next[0], 8.0, 1e-6);
+  EXPECT_NEAR(next[1], 20.0, 1e-6);
 };
 
 TEST(LayerForward, SetsCurrentBiasToOne){
@@ -366,7 +366,7 @@ TEST(LayerForward, SetsCurrentBiasToOne){
 
   layer.forward(next);
 
-  EXPECT_NEAR(layer[2], 1.0, 1e-12);
+  EXPECT_NEAR(layer[2], 1.0, 1e-6);
 };
 
 TEST(LayerForward, SetsNextLayerBiasToOne){
@@ -381,7 +381,7 @@ TEST(LayerForward, SetsNextLayerBiasToOne){
 
   layer.forward(next);
 
-  EXPECT_NEAR(next[2], 1.0, 1e-12);
+  EXPECT_NEAR(next[2], 1.0, 1e-6);
 };
 
 TEST(LayerForward, DoesNotActivateBias){
@@ -394,7 +394,7 @@ TEST(LayerForward, DoesNotActivateBias){
 
   layer.forward(next);
 
-  EXPECT_NEAR(next[0], 2.0, 1e-12);
+  EXPECT_NEAR(next[0], 2.0, 1e-6);
 };
 
 TEST(LayerForward, AppliesActivationToNodes){
@@ -407,7 +407,7 @@ TEST(LayerForward, AppliesActivationToNodes){
 
   layer.forward(next);
 
-  EXPECT_NEAR(next[0], 1.0, 1e-12);
+  EXPECT_NEAR(next[0], 1.0, 1e-6);
 };
 
 
@@ -422,8 +422,8 @@ TEST(LayerBackpropInitial, CalculatesLinearSigma){
 
   layer.backprop_initial({1.0, 2.0});
 
-  EXPECT_NEAR(layer.getSigma()[0], 2.0, 1e-12);
-  EXPECT_NEAR(layer.getSigma()[1], 3.0, 1e-12);
+  EXPECT_NEAR(layer.getSigma()[0], 2.0, 1e-6);
+  EXPECT_NEAR(layer.getSigma()[1], 3.0, 1e-6);
 };
 
 TEST(LayerBackpropInitial, CalculatesSigmoidSigma){
@@ -434,8 +434,8 @@ TEST(LayerBackpropInitial, CalculatesSigmoidSigma){
 
   layer.backprop_initial({0.0, 1.0});
 
-  EXPECT_NEAR(layer.getSigma()[0], 0.125, 1e-12);
-  EXPECT_NEAR(layer.getSigma()[1], -0.125, 1e-12);
+  EXPECT_NEAR(layer.getSigma()[0], 0.125, 1e-6);
+  EXPECT_NEAR(layer.getSigma()[1], -0.125, 1e-6);
 };
 
 TEST(LayerBackpropInitial, StopsAtTargetSize){
@@ -445,7 +445,7 @@ TEST(LayerBackpropInitial, StopsAtTargetSize){
 
   layer.backprop_initial({1.0});
 
-  EXPECT_NEAR(layer.getSigma()[0], 2.0, 1e-12);
+  EXPECT_NEAR(layer.getSigma()[0], 2.0, 1e-6);
 };
 
 
@@ -468,8 +468,8 @@ TEST(LayerBackprop, CalculatesExpectedSigma){
 
   layer.backprop(next);
 
-  EXPECT_NEAR(layer.getSigma()[0], 1.0, 1e-12);
-  EXPECT_NEAR(layer.getSigma()[1], 1.4, 1e-12);
+  EXPECT_NEAR(layer.getSigma()[0], 1.0, 1e-6);
+  EXPECT_NEAR(layer.getSigma()[1], 1.4, 1e-6);
 };
 
 TEST(LayerBackprop, UpdatesExpectedWeights){
@@ -488,13 +488,13 @@ TEST(LayerBackprop, UpdatesExpectedWeights){
 
   layer.backprop(next);
 
-  EXPECT_NEAR(layer.getWeights()[0], 0.08, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[1], 0.16, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[2], 0.28, 1e-12);
+  EXPECT_NEAR(layer.getWeights()[0], 0.08, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[1], 0.16, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[2], 0.28, 1e-6);
 
-  EXPECT_NEAR(layer.getWeights()[3], 0.38, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[4], 0.46, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[5], 0.58, 1e-12);
+  EXPECT_NEAR(layer.getWeights()[3], 0.38, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[4], 0.46, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[5], 0.58, 1e-6);
 };
 
 TEST(LayerBackprop, UpdatesBiasWithoutActivation){
@@ -510,8 +510,8 @@ TEST(LayerBackprop, UpdatesBiasWithoutActivation){
 
   layer.backprop(next);
 
-  EXPECT_NEAR(layer.getWeights()[0], 0.8, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[1], 0.9, 1e-12);
+  EXPECT_NEAR(layer.getWeights()[0], 0.8, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[1], 0.9, 1e-6);
 };
 
 TEST(LayerBackprop, ZeroLearningRateDoesNotModifyWeights){
@@ -527,9 +527,9 @@ TEST(LayerBackprop, ZeroLearningRateDoesNotModifyWeights){
 
   layer.backprop(next);
 
-  EXPECT_NEAR(layer.getWeights()[0], 0.1, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[1], 0.2, 1e-12);
-  EXPECT_NEAR(layer.getWeights()[2], 0.3, 1e-12);
+  EXPECT_NEAR(layer.getWeights()[0], 0.1, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[1], 0.2, 1e-6);
+  EXPECT_NEAR(layer.getWeights()[2], 0.3, 1e-6);
 };
 
 
@@ -606,9 +606,9 @@ TEST(LayerDeserialize, RestoresWeights){
   NN::Layer<2, 1> layer2;
   layer2.deserialize(data);
 
-  EXPECT_NEAR(layer2.getWeights()[0], 0.1, 1e-12);
-  EXPECT_NEAR(layer2.getWeights()[1], 0.2, 1e-12);
-  EXPECT_NEAR(layer2.getWeights()[2], 0.3, 1e-12);
+  EXPECT_NEAR(layer2.getWeights()[0], 0.1, 1e-6);
+  EXPECT_NEAR(layer2.getWeights()[1], 0.2, 1e-6);
+  EXPECT_NEAR(layer2.getWeights()[2], 0.3, 1e-6);
 };
 
 TEST(LayerDeserialize, RestoresLearningRate){
@@ -619,7 +619,7 @@ TEST(LayerDeserialize, RestoresLearningRate){
   NN::Layer<2, 1> layer2;
   layer2.deserialize(data);
 
-  EXPECT_NEAR(layer2.getLearningRate(), 0.123, 1e-12);
+  EXPECT_NEAR(layer2.getLearningRate(), 0.123, 1e-6);
 };
 
 TEST(LayerDeserialize, RestoresActivation){
@@ -665,13 +665,13 @@ TEST(LayerDeserialize, RestoresWholeLayer){
   NN::Layer<2, 2> layer2;
   layer2.deserialize(data);
 
-  EXPECT_NEAR(layer2.getWeights()[0], 0.1, 1e-12);
-  EXPECT_NEAR(layer2.getWeights()[1], 0.2, 1e-12);
-  EXPECT_NEAR(layer2.getWeights()[2], 0.3, 1e-12);
-  EXPECT_NEAR(layer2.getWeights()[3], 0.4, 1e-12);
-  EXPECT_NEAR(layer2.getWeights()[4], 0.5, 1e-12);
-  EXPECT_NEAR(layer2.getWeights()[5], 0.6, 1e-12);
-  EXPECT_NEAR(layer2.getLearningRate(), 0.02, 1e-12);
+  EXPECT_NEAR(layer2.getWeights()[0], 0.1, 1e-6);
+  EXPECT_NEAR(layer2.getWeights()[1], 0.2, 1e-6);
+  EXPECT_NEAR(layer2.getWeights()[2], 0.3, 1e-6);
+  EXPECT_NEAR(layer2.getWeights()[3], 0.4, 1e-6);
+  EXPECT_NEAR(layer2.getWeights()[4], 0.5, 1e-6);
+  EXPECT_NEAR(layer2.getWeights()[5], 0.6, 1e-6);
+  EXPECT_NEAR(layer2.getLearningRate(), 0.02, 1e-6);
   EXPECT_NE(dynamic_cast<NN::Sigmoid*>(layer2.getActivation().get()), nullptr);
   EXPECT_NE(dynamic_cast<NN::MSE*>(layer2.getLoss().get()), nullptr);
 };

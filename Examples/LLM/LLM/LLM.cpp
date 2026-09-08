@@ -50,7 +50,7 @@ std::filesystem::path LLM::LLM::getLearnFilePath() const noexcept {
 
 
 
-void LLM::LLM::setLearningRate(double value) noexcept {
+void LLM::LLM::setLearningRate(float value) noexcept {
   if(value < 0.00000001) return;
   learning_rate = value;
 };
@@ -125,6 +125,8 @@ void LLM::LLM::loadModelFromFile() noexcept {
     model.setWeights<4>(-0.06275, 0.06275);
     model.setWeights<5>(-0.03827, 0.03827);
     model.setWeights<6>(-0.03827, 0.03827);
+    model.setWeights<7>(-0.03827, 0.03827);
+    model.setWeights<8>(-0.03827, 0.03827);
     return;
   };
 
@@ -214,8 +216,8 @@ std::string LLM::LLM::prepareLearningSet(const std::string& text) const noexcept
 
 
 template<size_t S>
-std::pair<double, std::array<double, S>> LLM::LLM::calculateLearningSetEntropy(const std::string &text) const noexcept {
-  std::array<double, S> frequency{};
+std::pair<float, std::array<float, S>> LLM::LLM::calculateLearningSetEntropy(const std::string &text) const noexcept {
+  std::array<float, S> frequency{};
   size_t total = 0;
 
   for(unsigned char c : text){
@@ -224,10 +226,10 @@ std::pair<double, std::array<double, S>> LLM::LLM::calculateLearningSetEntropy(c
     total++;
   };
 
-  double entropy = 0.0;
+  float entropy = 0.0;
   for(size_t i = 0; i < S; i++){
     if(frequency[i] == 0) continue;
-    frequency[i] = static_cast<double>(frequency[i]) / static_cast<double>(total);
+    frequency[i] = static_cast<float>(frequency[i]) / static_cast<float>(total);
     entropy -= frequency[i] * std::log(frequency[i]);
   };
 
@@ -244,28 +246,31 @@ void LLM::LLM::setModel() noexcept {
   model.setActivation<3, NN::ReLU>();
   model.setActivation<4, NN::ReLU>();
   model.setActivation<5, NN::ReLU>();
-  model.setActivation<6, NN::Softmax>();
-  model.setLoss<6, NN::CrossEntropy>();
+  model.setActivation<6, NN::ReLU>();
+  model.setActivation<7, NN::ReLU>();
+  model.setActivation<8, NN::Softmax>();
+  model.setLoss<8, NN::CrossEntropy>();
+  // model.setGPUAcceleration(false);
 };
 
 
 
-void LLM::LLM::learningInfo(bool show_learning_ifno, const std::array<double, vocab_size>& target, size_t expected, double &ce_sum, double &mse_sum, size_t &correct, size_t &log_samples) noexcept {
-  double* result = model.getActivatedResult();
+void LLM::LLM::learningInfo(bool show_learning_ifno, const std::array<float, vocab_size>& target, size_t expected, float &ce_sum, float &mse_sum, size_t &correct, size_t &log_samples) noexcept {
+  float* result = model.getActivatedResult();
 
   size_t predicted = 0;
 
   for(size_t k = 1; k < vocab_size; k++) if(result[k] > result[predicted]) predicted = k;
   
-  double mse = 0.0;
+  float mse = 0.0;
   for(size_t k = 0; k < vocab_size; k++){
-    double diff = result[k] - target[k];
+    float diff = result[k] - target[k];
     mse += diff * diff / 2.0;
   };
   mse /= vocab_size;
 
-  double probability = result[expected];
-  double ce = -std::log(std::max(probability, 1e-12));
+  float probability = result[expected];
+  float ce = -std::log(std::max(probability, 0.0000001f));
 
   mse_sum += mse;
   ce_sum += ce;
@@ -453,14 +458,14 @@ void LLM::LLM::learn() noexcept {
 
   setModel();
 
-  std::array<double, input_size> input{};
-  std::array<double, vocab_size> target{};
+  std::array<float, input_size> input{};
+  std::array<float, vocab_size> target{};
   std::array<size_t, context_size> active_input{};
 
   size_t previous_expected = 0;
   bool has_previous_sample = false;
 
-  double best_ce = std::numeric_limits<double>::max();
+  float best_ce = std::numeric_limits<float>::max();
   unsigned int stale_epochs = 0;
   unsigned int lr_reductions = 0;
 
@@ -485,7 +490,7 @@ void LLM::LLM::learn() noexcept {
     fmt::println("learning_set_repeats: {}", learning_set_repeats);
     fmt::println("valid_positions: {}", valid_positions.size());
 
-    double epoch_ce_sum = 0.0;
+    float epoch_ce_sum = 0.0;
     size_t epoch_samples = 0;
 
     for(unsigned int i = 0; i < learn_samples; i++){
@@ -501,8 +506,8 @@ void LLM::LLM::learn() noexcept {
     fmt::println(fg(fmt::color::yellow), "-- Epoch {}/{}", j + 1, epoch);
 
     for(unsigned int r = 0; r < learning_set_repeats; r++){
-      double ce_sum = 0.0;
-      double mse_sum = 0.0;
+      float ce_sum = 0.0;
+      float mse_sum = 0.0;
       size_t correct = 0;
       size_t log_samples = 0;
 
@@ -550,8 +555,8 @@ void LLM::LLM::learn() noexcept {
         model.forward();
 
         if(dynamic_lr){
-          double* result = model.getActivatedResult();
-          epoch_ce_sum += -std::log(std::max(result[expected], 1e-12));
+          float* result = model.getActivatedResult();
+          epoch_ce_sum += -std::log(std::max(result[expected], 0.0000001f));
           epoch_samples++;
         };
 
@@ -566,7 +571,7 @@ void LLM::LLM::learn() noexcept {
     };
 
     if(dynamic_lr && epoch_samples > 0){
-      double epoch_ce = epoch_ce_sum / epoch_samples;
+      float epoch_ce = epoch_ce_sum / epoch_samples;
 
       if(epoch_ce < best_ce - 0.01){
         best_ce = epoch_ce;
@@ -575,8 +580,8 @@ void LLM::LLM::learn() noexcept {
       else stale_epochs++;
 
       if(stale_epochs >= 3 && lr_reductions < max_lr_reductions){
-        learning_rate *= 0.5;
-        learning_rate = std::max(learning_rate, 0.00001);
+        learning_rate *= 0.5f;
+        learning_rate = std::max(learning_rate, 0.00001f);
         model.setLearningRate(learning_rate);
         best_ce = epoch_ce;
         stale_epochs = 0;
@@ -585,9 +590,13 @@ void LLM::LLM::learn() noexcept {
       };
     };
 
+    glFinish();
+
     auto now = std::chrono::steady_clock::now();
-    double elapsed = std::chrono::duration<double>(now - last).count();
+    float elapsed = std::chrono::duration<float>(now - last).count();
+    
     fmt::println("Elapsed: {:.3f}s", elapsed);
+    
     last = now;
     saveModelToFile();
   };
@@ -606,7 +615,7 @@ std::string LLM::LLM::getRespond(const std::string &message) noexcept {
 
   setModel();
 
-  std::array<double, input_size> input{};
+  std::array<float, input_size> input{};
 
   for(size_t i = 0; i < response_size; i++){
     input.fill(0.0);
@@ -622,7 +631,7 @@ std::string LLM::LLM::getRespond(const std::string &message) noexcept {
     model.setInput(input);
     model.forward();
 
-    double* result = model.getResult();
+    float* result = model.getResult();
     size_t predicted = 0;
 
     for(size_t j = 1; j < vocab_size; j++) if(result[j] > result[predicted]) predicted = j;
@@ -721,12 +730,12 @@ void LLM::LLM::onUpdate() noexcept {
     fmt::print(fg(fmt::color::white), "new_rate > ");
     std::getline(std::cin, new_rate);
     
-    double new_rate_val = 0;
+    float new_rate_val = 0;
     try{
       new_rate_val = std::stod(new_rate);
     }
     catch(...){
-      fmt::println(fg(fmt::color::red), "Invalid double");
+      fmt::println(fg(fmt::color::red), "Invalid float");
       return;
     };
     

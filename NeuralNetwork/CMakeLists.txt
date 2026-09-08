@@ -26,6 +26,8 @@ set(src
 add_library(NeuralNetwork STATIC ${src})
 add_library(NeuralNetwork::NeuralNetwork ALIAS NeuralNetwork)
 
+target_link_libraries(NeuralNetwork PRIVATE CWindow::CWindow)
+
 target_include_directories(
   NeuralNetwork
   PUBLIC

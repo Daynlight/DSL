@@ -14,22 +14,22 @@
 namespace NN{
 class iLoss{
 public:
-  virtual double fun(double x, double t) const noexcept = 0;
-  virtual double fun_prime(double x, double t) const noexcept = 0;
+  virtual float fun(float x, float t) const noexcept = 0;
+  virtual float fun_prime(float x, float t) const noexcept = 0;
 };
 
 
 
 class MSE : public iLoss{
 public:
-  double fun(double x, double t) const noexcept;
-  double fun_prime(double x, double t) const noexcept;
+  float fun(float x, float t) const noexcept;
+  float fun_prime(float x, float t) const noexcept;
 };
 
 class CrossEntropy : public iLoss{
 public:
-  double fun(double x, double t) const noexcept;
-  double fun_prime(double x, double t) const noexcept;
+  float fun(float x, float t) const noexcept;
+  float fun_prime(float x, float t) const noexcept;
 };
 };
 

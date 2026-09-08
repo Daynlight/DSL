@@ -97,7 +97,7 @@ void SerializationNetwork(){
   std::srand(std::time(nullptr));
   NN::NeuralNetwork network = NN::NeuralNetwork<2, 2, 2, 1, 1>();
 
-  const double learning_rate = 0.01;
+  const float learning_rate = 0.01;
   const unsigned int modulo_number = 2;
   const unsigned int learn_samples = 2000;
   const unsigned int epoch = 1000;
@@ -114,29 +114,29 @@ void SerializationNetwork(){
   fmt::println(fg(fmt::color::yellow), "-- Learning from random set");
   for(unsigned int j = 0; j < epoch; j++){
     for(unsigned int i = 0; i < learn_samples; i++) {
-      double x = (rand()%modulo_number);
-      double y = (rand()%modulo_number);
+      float x = (rand()%modulo_number);
+      float y = (rand()%modulo_number);
 
       NN::Utils::progressBar(i + j * learn_samples, learn_samples * epoch);
 
       network.setInput({x, y});
       network.forward();
-      double res = ((x != 0) != (y != 0));
+      float res = ((x != 0) != (y != 0));
       network.backprop({res});
     };
   };
 
   fmt::println(fg(fmt::color::yellow), "-- Testing on random set");
-  double sum = 0;
+  float sum = 0;
   for(unsigned int i = 0; i < tests; i++) {
-    double x = (rand()%modulo_number);
-    double y = (rand()%modulo_number);
+    float x = (rand()%modulo_number);
+    float y = (rand()%modulo_number);
 
     NN::Utils::progressBar(i, tests);
 
     network.setInput({x, y});
     network.forward();
-    double res = ((x != 0) != (y != 0));
+    float res = ((x != 0) != (y != 0));
     if ((network.getResult()[0] >= 0.5) == res) sum += 1;
   };
   if((sum / tests) * 100 >= 90) fmt::println(fg(fmt::color::green), "avg: {}%", (sum / tests) * 100);
@@ -161,14 +161,14 @@ void SerializationNetwork(){
   fmt::println(fg(fmt::color::yellow), "-- Testing Network 2 on random set");
   sum = 0;
   for(unsigned int i = 0; i < tests; i++) {
-    double x = (rand()%modulo_number);
-    double y = (rand()%modulo_number);
+    float x = (rand()%modulo_number);
+    float y = (rand()%modulo_number);
 
     NN::Utils::progressBar(i, tests);
 
     network2.setInput({x, y});
     network2.forward();
-    double res = ((x != 0) != (y != 0));
+    float res = ((x != 0) != (y != 0));
     if ((network2.getResult()[0] >= 0.5) == res) sum += 1;
   };
   if((sum / tests) * 100 >= 90) fmt::println(fg(fmt::color::green), "avg: {}%", (sum / tests) * 100);

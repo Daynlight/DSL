@@ -72,18 +72,21 @@ public:
 // ===== Setters/Getters ===== //
 // =========================== //
 public:
-  void setLearningRate(double learning_rate) noexcept;
+  void setLearningRate(float learning_rate) noexcept;
   template<std::size_t I, typename T>
   void setActivation() noexcept;
   template<std::size_t I, typename T>
   void setLoss() noexcept;
-  void setInput(std::initializer_list<double> nodes) noexcept;
-  void setInput(std::span<const double> nodes) noexcept;
-  void setWeights(double min, double max) noexcept;
+  void setInput(std::initializer_list<float> nodes) noexcept;
+  void setInput(std::span<const float> nodes) noexcept;
+  void setWeights(float min, float max) noexcept;
   template<std::size_t I>
-  void setWeights(double min, double max) noexcept;
-  double* getResult() noexcept;
-  double* getActivatedResult() noexcept;
+  void setWeights(float min, float max) noexcept;
+  void setGPUAcceleration(bool value) noexcept;
+  template<std::size_t I>
+  void setGPUAcceleration(bool value) noexcept;
+  float* getResult() noexcept;
+  float* getActivatedResult() noexcept;
 
 // =========================== //
 // ===== Forward/Backprop ==== //
@@ -93,12 +96,12 @@ public:
   template <std::size_t... I>
   void forwardImpl(std::index_sequence<I...>);
   
-  void backprop(std::initializer_list<double> loss);
-  void backprop(std::span<const double> loss);
+  void backprop(std::initializer_list<float> loss);
+  void backprop(std::span<const float> loss);
   template <std::size_t... I>
   void backpropImpl(std::index_sequence<I...>);
-  void backpropInitial(std::initializer_list<double> loss);
-  void backpropInitial(std::span<const double> loss);
+  void backpropInitial(std::initializer_list<float> loss);
+  void backpropInitial(std::span<const float> loss);
 
 
 // =========================== //

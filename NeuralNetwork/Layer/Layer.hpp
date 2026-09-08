@@ -15,8 +15,8 @@
 // core
 template <unsigned int S, unsigned int D>
 inline NN::Layer<S, D>::Layer() noexcept {
-  setWeights(-1, 1);
-
+  nodes[S] = 1.0f;
+  setWeights(-1.0f, 1.0f);
   loss = std::make_unique<NN::MSE>();
   activation = std::make_unique<NN::Linear>();
 };
@@ -32,44 +32,157 @@ inline NN::Layer<S, D>::~Layer() noexcept { };
 // ======= Setters/Getters ====== //
 // ============================== //
 template <unsigned int S, unsigned int D>
-inline double *NN::Layer<S, D>::getNodes() noexcept {
+inline float *NN::Layer<S, D>::getNodes() noexcept {
+  if(cpu_nodes_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUNodes].get(data);
+    std::memcpy(nodes, data.data(), sizeof(nodes));
+    cpu_nodes_dirty = false;
+  };
+
+  gpu_nodes_dirty = true;
+  activated_after_forward = false;
+
   return nodes;
 };
 
 
 
 template <unsigned int S, unsigned int D>
-inline double *NN::Layer<S, D>::getActivatedNodes() noexcept{
+inline float *NN::Layer<S, D>::getActivatedNodes() noexcept {
   activateNodes();
+
+  if(cpu_activated_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUActivated].get(data);
+    std::memcpy(activated, data.data(), sizeof(activated));
+    cpu_activated_dirty = false;
+  };
+
   return activated;
 };
 
 
 
 template <unsigned int S, unsigned int D>
-inline void NN::Layer<S, D>::setNodes(std::initializer_list<double> nodes) noexcept {
+inline void NN::Layer<S, D>::setNodes(std::initializer_list<float> nodes) noexcept {
+  if(cpu_nodes_dirty && nodes.size() < S){
+    std::vector<float> data;
+    gpu_storage[GPUNodes].get(data);
+    std::memcpy(this->nodes, data.data(), sizeof(this->nodes));
+    cpu_nodes_dirty = false;
+  };
+
   unsigned int i = 0;
-  for (auto it = nodes.begin(); it != nodes.end() && i < S; ++it, ++i) this->nodes[i] = *it;
+  for(auto it = nodes.begin(); it != nodes.end() && i < S; ++it, ++i) this->nodes[i] = *it;
+
+  this->nodes[S] = 1.0f;
+  gpu_nodes_dirty = true;
+  cpu_nodes_dirty = false;
+  activated_after_forward = false;
 };
 
 
 
 template<unsigned int S, unsigned int D>
-inline void NN::Layer<S, D>::setNodes(std::span<const double> nodes) noexcept {
+inline void NN::Layer<S, D>::setNodes(std::span<const float> nodes) noexcept {
+  if(cpu_nodes_dirty && nodes.size() < S){
+    std::vector<float> data;
+    gpu_storage[GPUNodes].get(data);
+    std::memcpy(this->nodes, data.data(), sizeof(this->nodes));
+    cpu_nodes_dirty = false;
+  };
+
   unsigned int i = 0;
-  for(const double& node : nodes){
+  for(const float& node : nodes){
     if(i >= S) break;
     this->nodes[i++] = node;
   };
+
+  this->nodes[S] = 1.0f;
+  gpu_nodes_dirty = true;
+  cpu_nodes_dirty = false;
+  activated_after_forward = false;
 };
 
 
 
 template <unsigned int S, unsigned int D>
-inline double NN::Layer<S, D>::getActivatedNode(unsigned int i) const noexcept {
-  std::span<const double> layer(nodes, S);
-  return activation->fun(layer, i);
+inline float NN::Layer<S, D>::getActivatedNode(unsigned int i) noexcept {
+  if(cpu_nodes_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUNodes].get(data);
+    std::memcpy(nodes, data.data(), sizeof(nodes));
+    cpu_nodes_dirty = false;
+  };
 
+  std::span<const float> layer(nodes, S);
+  return activation->fun(layer, i);
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline void NN::Layer<S, D>::activateNodes_cpu() noexcept {
+  if(cpu_nodes_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUNodes].get(data);
+    std::memcpy(nodes, data.data(), sizeof(nodes));
+    cpu_nodes_dirty = false;
+  };
+
+  for(size_t i = 0; i < S; i++) activated[i] = getActivatedNode(i);
+
+  cpu_activated_dirty = false;
+  gpu_activated_dirty = true;
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline void NN::Layer<S, D>::activateNodes_threads() noexcept {
+  if(cpu_nodes_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUNodes].get(data);
+    std::memcpy(nodes, data.data(), sizeof(nodes));
+    cpu_nodes_dirty = false;
+  };
+
+  workers.parallel_for(0, S, [&](size_t begin, size_t end){
+    for(size_t i = begin; i < end; i++) activated[i] = getActivatedNode(i);
+  });
+
+  workers.wait();
+
+  cpu_activated_dirty = false;
+  gpu_activated_dirty = true;
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline void NN::Layer<S, D>::activateNodes_gpu() noexcept {
+  ensure_gpu_storage();
+
+  auto& gpu = NN::GPUAcceleration::get();
+  CW::Renderer::ComputeShader* shader = nullptr;
+  unsigned int groups = (S + 255) / 256;
+
+  if(dynamic_cast<NN::Linear*>(activation.get())) shader = &gpu.getActivationLinearShader();
+  else if(dynamic_cast<NN::Sigmoid*>(activation.get())) shader = &gpu.getActivationSigmoidShader();
+  else if(dynamic_cast<NN::ReLU*>(activation.get())) shader = &gpu.getActivationReLUShader();
+  else if(dynamic_cast<NN::Softmax*>(activation.get())){
+    shader = &gpu.getActivationSoftmaxShader();
+    groups = 1;
+  };
+
+  if(!shader) return;
+
+  shader->run(gpu_storage, groups);
+  glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+  cpu_activated_dirty = true;
+  gpu_activated_dirty = false;
 };
 
 
@@ -77,57 +190,197 @@ inline double NN::Layer<S, D>::getActivatedNode(unsigned int i) const noexcept {
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::activateNodes() noexcept {
   if(activated_after_forward) return;
-  for(size_t i = 0; i < S; i++) activated[i] = getActivatedNode(i);
+
+  if(!gpu_acceleration){
+    if(cpu_nodes_dirty){
+      std::vector<float> data;
+      gpu_storage[GPUNodes].get(data);
+      std::memcpy(nodes, data.data(), sizeof(nodes));
+      cpu_nodes_dirty = false;
+    };
+
+    if(size_t(S) > multithreading_acceleration_size_threshold) activateNodes_threads();
+    else activateNodes_cpu();
+
+    cpu_activated_dirty = false;
+    gpu_activated_dirty = true;
+  }
+  else{
+    activateNodes_gpu();
+
+    cpu_activated_dirty = true;
+    gpu_activated_dirty = false;
+  };
+
   activated_after_forward = true;
 };
 
 
 
 template <unsigned int S, unsigned int D>
-inline double *NN::Layer<S, D>::getWeights() noexcept {
+inline float *NN::Layer<S, D>::getWeights() noexcept {
+  if(cpu_weights_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUWeights].get(data);
+    std::memcpy(weights, data.data(), sizeof(weights));
+    cpu_weights_dirty = false;
+  };
+
+  gpu_weights_dirty = true;
   return weights;
 };
 
 
 
 template <unsigned int S, unsigned int D>
-inline void NN::Layer<S, D>::setWeights(std::initializer_list<double> weights) noexcept {
+inline void NN::Layer<S, D>::setWeights(std::initializer_list<float> weights) noexcept {
+  if(cpu_weights_dirty && weights.size() < (S + 1) * D){
+    std::vector<float> data;
+    gpu_storage[GPUWeights].get(data);
+    std::memcpy(this->weights, data.data(), sizeof(this->weights));
+    cpu_weights_dirty = false;
+  };
+
   unsigned int i = 0;
-  for (auto it = weights.begin(); it != weights.end() && i < (S + 1) * D; ++it, ++i) this->weights[i] = *it;
+  for(auto it = weights.begin(); it != weights.end() && i < (S + 1) * D; ++it, ++i) this->weights[i] = *it;
+
+  gpu_weights_dirty = true;
+  cpu_weights_dirty = false;
 };
 
 
 
 template <unsigned int S, unsigned int D>
-inline void NN::Layer<S, D>::setWeights(const double* weights) noexcept {
+inline void NN::Layer<S, D>::setWeights(const float* weights) noexcept {
   for (unsigned int i = 0; i < (S + 1) * D; ++i) this->weights[i] = weights[i];
+  gpu_weights_dirty = true;
+  cpu_weights_dirty = false;
 };
 
 
 
 template <unsigned int S, unsigned int D>
-inline void NN::Layer<S, D>::setWeights(double min, double max) noexcept {  
+inline void NN::Layer<S, D>::setWeights(float min, float max) noexcept {  
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_real_distribution<double> dist(min, max);
+  std::uniform_real_distribution<float> dist(min, max);
   
-  for(double &el : weights) el = dist(gen);
-  
+  for(float &el : weights) el = dist(gen);
   for(size_t j = 0; j < D; j++) weights[j * (S + 1) + S] = 0.0;
+  
+  gpu_weights_dirty = true;
+  cpu_weights_dirty = false;
 };
 
 
 
 template <unsigned int S, unsigned int D>
-inline double NN::Layer<S, D>::getLearningRate() const noexcept {
+inline float NN::Layer<S, D>::getLearningRate() const noexcept {
   return learning_rate;
 };
 
 
 
 template <unsigned int S, unsigned int D>
-inline void NN::Layer<S, D>::setLearningRate(double learning_rate) noexcept {
+inline void NN::Layer<S, D>::setLearningRate(float learning_rate) noexcept {
   this->learning_rate = learning_rate;
+  gpu_header_dirty = true;
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline bool NN::Layer<S, D>::getGpuAcceleration() const noexcept {
+  return gpu_acceleration;
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline void NN::Layer<S, D>::setGpuAcceleration(bool value) noexcept {
+  gpu_acceleration = value;
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline void NN::Layer<S, D>::ensure_gpu_storage() {
+  if(gpu_weights_dirty && cpu_weights_dirty)
+    throw std::runtime_error("GPU and CPU weights are both dirty");
+
+  if(gpu_nodes_dirty && cpu_nodes_dirty)
+    throw std::runtime_error("GPU and CPU nodes are both dirty");
+
+  if(gpu_activated_dirty && cpu_activated_dirty)
+    throw std::runtime_error("GPU and CPU activated are both dirty");
+
+  if(gpu_sigma_dirty && cpu_sigma_dirty)
+    throw std::runtime_error("GPU and CPU sigma are both dirty");
+
+  if(!gpu_storage_ready){
+    gpu_storage.resize(GPUBufferCount);
+
+    nodes[S] = 1.0f;
+    NN::GPUAcceleration::get();
+    gpu_storage[GPUNodes].set(std::vector<float>(nodes, nodes + S + 1));
+    gpu_storage[GPUActivated].set(std::vector<float>(S, 0.0f));
+    gpu_storage[GPUSigma].set(std::vector<float>(S, 0.0f));
+    gpu_storage[GPUGradient].set(std::vector<float>(S, 0.0f));
+    gpu_storage[GPUTarget].set(std::vector<float>(S, 0.0f));
+
+    gpu_nodes_dirty = false;
+    gpu_storage_ready = true;
+  };
+
+  if(gpu_weights_dirty){
+    gpu_storage[GPUWeights].set(std::vector<float>(weights, weights + (S + 1) * D));
+    gpu_weights_dirty = false;
+  };
+
+  if(gpu_nodes_dirty){
+    gpu_storage[GPUNodes].set(std::vector<float>(nodes, nodes + S + 1));
+    gpu_nodes_dirty = false;
+  };
+
+  if(gpu_activated_dirty){
+    gpu_storage[GPUActivated].set(std::vector<float>(activated, activated + S));
+    gpu_activated_dirty = false;
+  };
+
+  if(gpu_sigma_dirty){
+    gpu_storage[GPUSigma].set(std::vector<float>(sigma, sigma + S));
+    gpu_sigma_dirty = false;
+  };
+
+  sync_gpu_header();
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline void NN::Layer<S, D>::sync_gpu_header() noexcept {
+  if(!gpu_storage_ready || !gpu_header_dirty) return;
+
+  unsigned int activation_id = 0;
+  unsigned int loss_id = 0;
+
+  if(dynamic_cast<NN::Linear*>(activation.get())) activation_id = 1;
+  else if(dynamic_cast<NN::Sigmoid*>(activation.get())) activation_id = 2;
+  else if(dynamic_cast<NN::Softmax*>(activation.get())) activation_id = 3;
+  else if(dynamic_cast<NN::ReLU*>(activation.get())) activation_id = 4;
+
+  if(dynamic_cast<NN::MSE*>(loss.get())) loss_id = 1;
+  else if(dynamic_cast<NN::CrossEntropy*>(loss.get())) loss_id = 2;
+
+  gpu_storage[GPUHeader].set(std::vector<float>{
+    static_cast<float>(S),
+    static_cast<float>(D),
+    static_cast<float>(activation_id),
+    static_cast<float>(loss_id),
+    learning_rate
+  });
+
+  gpu_header_dirty = false;
 };
 
 
@@ -143,6 +396,8 @@ template <unsigned int S, unsigned int D>
 template<typename T>
 inline void NN::Layer<S, D>::setActivation() noexcept {
   activation = std::make_unique<T>();
+  gpu_header_dirty = true;
+  activated_after_forward = false;
 };
 
 
@@ -158,12 +413,13 @@ template <unsigned int S, unsigned int D>
 template<typename T>
 inline void NN::Layer<S, D>::setLoss() noexcept {
   loss = std::make_unique<T>();
+  gpu_header_dirty = true;
 };
 
 
 
 template <unsigned int S, unsigned int D>
-inline double &NN::Layer<S, D>::operator[](unsigned int i) {
+inline float &NN::Layer<S, D>::operator[](unsigned int i) {
   if(i > S) throw std::range_error("index out of range");
   return nodes[i];
 };
@@ -171,7 +427,14 @@ inline double &NN::Layer<S, D>::operator[](unsigned int i) {
 
 
 template <unsigned int S, unsigned int D>
-inline const double *NN::Layer<S, D>::getSigma() const noexcept {
+inline const float *NN::Layer<S, D>::getSigma() noexcept {
+  if(cpu_sigma_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUSigma].get(data);
+    std::memcpy(sigma, data.data(), sizeof(sigma));
+    cpu_sigma_dirty = false;
+  };
+
   return sigma;
 };
 
@@ -182,90 +445,365 @@ inline const double *NN::Layer<S, D>::getSigma() const noexcept {
 // =============================== //
 template <unsigned int S, unsigned int D>
 template <unsigned int N>
-inline void NN::Layer<S, D>::forward(NN::Layer<D, N> &layer) {
-  nodes[S] = 1.0;
-  double output[D];
+inline void NN::Layer<S, D>::forward_cpu(Layer<D, N>& layer) noexcept {
+  if(cpu_weights_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUWeights].get(data);
+    std::memcpy(weights, data.data(), sizeof(weights));
+    cpu_weights_dirty = false;
+  };
 
-  activated_after_forward = false;
-  activateNodes();
+  if(cpu_activated_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUActivated].get(data);
+    std::memcpy(activated, data.data(), sizeof(activated));
+    cpu_activated_dirty = false;
+  };
+
+  float output[D];
+
+  for(size_t i = 0; i < D; i++){
+    float sum = weights[i * (S + 1) + S];
+    for(size_t j = 0; j < S; j++) sum += activated[j] * weights[i * (S + 1) + j];
+    output[i] = sum;
+  };
+
+  std::memcpy(layer.getNodes(), output, sizeof(float) * D);
+  layer[D] = 1.0f;
+
+  layer.gpu_nodes_dirty = true;
+  layer.cpu_nodes_dirty = false;
+  layer.activated_after_forward = false;
+};
+
+
+
+template <unsigned int S, unsigned int D>
+template <unsigned int N>
+inline void NN::Layer<S, D>::forward_threads(Layer<D, N>& layer) noexcept {
+  if(cpu_weights_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUWeights].get(data);
+    std::memcpy(weights, data.data(), sizeof(weights));
+    cpu_weights_dirty = false;
+  };
+
+  if(cpu_activated_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUActivated].get(data);
+    std::memcpy(activated, data.data(), sizeof(activated));
+    cpu_activated_dirty = false;
+  };
+
+  float output[D];
 
   workers.parallel_for(0, D, [&](size_t begin, size_t end){
-    for(unsigned int i = begin; i < end; i++){
-      double sum = weights[i * (S + 1) + S];
-      for(unsigned int j = 0; j < S; j++)
-        sum += activated[j] * weights[i * (S + 1) + j];
+    for(size_t i = begin; i < end; i++){
+      float sum = weights[i * (S + 1) + S];
+      for(size_t j = 0; j < S; j++) sum += activated[j] * weights[i * (S + 1) + j];
       output[i] = sum;
     };
   });
+
   workers.wait();
 
-  std::memcpy(layer.getNodes(), output, sizeof(double) * D);
-  layer[D] = 1;
+  std::memcpy(layer.getNodes(), output, sizeof(float) * D);
+  layer[D] = 1.0f;
+
+  layer.gpu_nodes_dirty = true;
+  layer.cpu_nodes_dirty = false;
+  layer.activated_after_forward = false;
 };
 
 
 
 template <unsigned int S, unsigned int D>
-inline void NN::Layer<S, D>::backprop_initial(std::initializer_list<double> target) noexcept {
-  backprop_initial(std::span<const double>(target.begin(), target.size()));
+template <unsigned int N>
+inline void NN::Layer<S, D>::forward_gpu(Layer<D, N>& layer) {
+  ensure_gpu_storage();
+  layer.ensure_gpu_storage();
+
+  layer.gpu_storage[GPUNodes].bind(GPUBufferCount);
+
+  auto& shader = NN::GPUAcceleration::get().getForwardShader();
+  shader.run(gpu_storage, (D + 255) / 256);
+
+  glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+  layer.cpu_nodes_dirty = true;
+  layer.gpu_nodes_dirty = false;
+  layer.activated_after_forward = false;
 };
 
 
 
 template <unsigned int S, unsigned int D>
-inline void NN::Layer<S, D>::backprop_initial(std::span<const double> target) noexcept {
+template <unsigned int N>
+inline void NN::Layer<S, D>::forward(NN::Layer<D, N>& layer) {
+  nodes[S] = 1.0;
+  activated_after_forward = false;
   activateNodes();
-  
-  if(dynamic_cast<NN::Softmax*>(activation.get()) && dynamic_cast<NN::CrossEntropy*>(loss.get())){
-    backprop_initial_softmax_cross_entropy_fuse(target);
-    return;
-  };
-  
-  double output[S]{};
-  std::span<const double> layer(nodes, S);
 
-  double loss_gradient[S];
+  const size_t work = size_t(S) * D;
+
+  if(!gpu_acceleration){
+    if(work > multithreading_acceleration_size_threshold) forward_threads(layer);
+    else forward_cpu(layer);
+  }
+  else{
+    forward_gpu(layer);
+  };
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline void NN::Layer<S, D>::backprop_initial(std::initializer_list<float> target) noexcept {
+  backprop_initial(std::span<const float>(target.begin(), target.size()));
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline void NN::Layer<S, D>::backprop_initial_cpu(std::span<const float> target) noexcept {
+  if(cpu_nodes_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUNodes].get(data);
+    std::memcpy(nodes, data.data(), sizeof(nodes));
+    cpu_nodes_dirty = false;
+  };
+
+  if(cpu_activated_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUActivated].get(data);
+    std::memcpy(activated, data.data(), sizeof(activated));
+    cpu_activated_dirty = false;
+  };
 
   const size_t size = std::min<size_t>(S, target.size());
-  for(size_t i = 0; i < size; i++){
-    loss_gradient[i] = loss->fun_prime(activated[i], target[i]);
+  float output[S]{};
+  std::span<const float> layer(nodes, S);
+  float loss_gradient[S]{};
+
+  for(size_t i = 0; i < size; i++) loss_gradient[i] = loss->fun_prime(activated[i], target[i]);
+
+  for(size_t i = 0; i < S; i++){
+    float sum = 0.0;
+    for(size_t j = 0; j < size; j++) sum += loss_gradient[j] * activation->fun_prime(layer, j, i);
+    output[i] = sum;
   };
+
+  std::memcpy(sigma, output, sizeof(output));
+
+  cpu_sigma_dirty = false;
+  gpu_sigma_dirty = true;
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline void NN::Layer<S, D>::backprop_initial_threads(std::span<const float> target) noexcept {
+  if(cpu_nodes_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUNodes].get(data);
+    std::memcpy(nodes, data.data(), sizeof(nodes));
+    cpu_nodes_dirty = false;
+  };
+
+  if(cpu_activated_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUActivated].get(data);
+    std::memcpy(activated, data.data(), sizeof(activated));
+    cpu_activated_dirty = false;
+  };
+
+  const size_t size = std::min<size_t>(S, target.size());
+  float output[S]{};
+  std::span<const float> layer(nodes, S);
+  float loss_gradient[S]{};
+
+  for(size_t i = 0; i < size; i++) loss_gradient[i] = loss->fun_prime(activated[i], target[i]);
 
   workers.parallel_for(0, S, [&](size_t begin, size_t end){
     for(size_t i = begin; i < end; i++){
-      double sum = 0.0;
+      float sum = 0.0;
       for(size_t j = 0; j < size; j++) sum += loss_gradient[j] * activation->fun_prime(layer, j, i);
       output[i] = sum;
     };
   });
+
   workers.wait();
 
   std::memcpy(sigma, output, sizeof(output));
+
+  cpu_sigma_dirty = false;
+  gpu_sigma_dirty = true;
 };
 
 
 
 template <unsigned int S, unsigned int D>
-inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse(std::span<const double> target) noexcept {
-  activateNodes();
-  
-  double output[S]{};
+inline void NN::Layer<S, D>::backprop_initial_gpu(std::span<const float> target) noexcept {
+  unsigned int activation_id = 0;
+  unsigned int loss_id = 0;
 
-  double exponent[S];
-  double max = nodes[0];
+  if(dynamic_cast<NN::Linear*>(activation.get())) activation_id = 1;
+  else if(dynamic_cast<NN::Sigmoid*>(activation.get())) activation_id = 2;
+  else if(dynamic_cast<NN::Softmax*>(activation.get())) activation_id = 3;
+  else if(dynamic_cast<NN::ReLU*>(activation.get())) activation_id = 4;
+
+  if(dynamic_cast<NN::MSE*>(loss.get())) loss_id = 1;
+  else if(dynamic_cast<NN::CrossEntropy*>(loss.get())) loss_id = 2;
+
+  if(activation_id == 0 || loss_id == 0) return;
+
+  ensure_gpu_storage();
+
+  const size_t size = std::min<size_t>(S, target.size());
+  std::vector<float> target_data(S, 0.0f);
+  std::copy_n(target.data(), size, target_data.data());
+
+  gpu_storage[GPUTarget].set(target_data);
+
+  auto& shader = NN::GPUAcceleration::get().getBackpropInitialShader();
+  shader.run(gpu_storage, activation_id == 3 ? 1 : (S + 255) / 256);
+
+  glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+  cpu_sigma_dirty = true;
+  gpu_sigma_dirty = false;
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline void NN::Layer<S, D>::backprop_initial(std::span<const float> target) noexcept {
+  activateNodes();
+  if(dynamic_cast<NN::Softmax*>(activation.get()) && dynamic_cast<NN::CrossEntropy*>(loss.get())){
+    backprop_initial_softmax_cross_entropy_fuse(target);
+    return;
+  };
+  const size_t work = size_t(S) * std::min<size_t>(S, target.size());
+  const bool supported_activation = dynamic_cast<NN::Linear*>(activation.get()) ||
+                                    dynamic_cast<NN::Sigmoid*>(activation.get()) ||
+                                    dynamic_cast<NN::ReLU*>(activation.get()) ||
+                                    dynamic_cast<NN::Softmax*>(activation.get());
+  const bool supported_loss = dynamic_cast<NN::MSE*>(loss.get()) ||
+                              dynamic_cast<NN::CrossEntropy*>(loss.get());
+  if(!gpu_acceleration || !supported_activation || !supported_loss){
+    if(work > multithreading_acceleration_size_threshold) backprop_initial_threads(target);
+    else backprop_initial_cpu(target);
+  }
+  else{
+    backprop_initial_gpu(target);
+  };
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse_cpu(std::span<const float> target) noexcept {
+  if(cpu_nodes_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUNodes].get(data);
+    std::memcpy(nodes, data.data(), sizeof(nodes));
+    cpu_nodes_dirty = false;
+  };
+
+  float output[S]{};
+  float exponent[S];
+  float max = nodes[0];
 
   for(size_t i = 1; i < S; i++) if(nodes[i] > max) max = nodes[i];
 
-  double sum = 0.0;
+  float sum = 0.0;
+
   for(size_t i = 0; i < S; i++){
     exponent[i] = std::exp(nodes[i] - max);
     sum += exponent[i];
   };
 
   const size_t size = std::min<size_t>(S, target.size());
+
   for(size_t i = 0; i < size; i++) output[i] = exponent[i] / sum - target[i];
 
   std::memcpy(sigma, output, sizeof(output));
+
+  cpu_sigma_dirty = false;
+  gpu_sigma_dirty = true;
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse_threads(std::span<const float> target) noexcept {
+  if(cpu_nodes_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUNodes].get(data);
+    std::memcpy(nodes, data.data(), sizeof(nodes));
+    cpu_nodes_dirty = false;
+  };
+
+  float output[S]{};
+  float exponent[S];
+  float max = nodes[0];
+
+  for(size_t i = 1; i < S; i++) if(nodes[i] > max) max = nodes[i];
+
+  float sum = 0.0;
+
+  for(size_t i = 0; i < S; i++){
+    exponent[i] = std::exp(nodes[i] - max);
+    sum += exponent[i];
+  };
+
+  const size_t size = std::min<size_t>(S, target.size());
+
+  workers.parallel_for(0, size, [&](size_t begin, size_t end){
+    for(size_t i = begin; i < end; i++) output[i] = exponent[i] / sum - target[i];
+  });
+
+  workers.wait();
+
+  std::memcpy(sigma, output, sizeof(output));
+
+  cpu_sigma_dirty = false;
+  gpu_sigma_dirty = true;
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse_gpu(std::span<const float> target) noexcept {
+  ensure_gpu_storage();
+
+  const size_t size = std::min<size_t>(S, target.size());
+  std::vector<float> target_data(S, 0.0f);
+  std::copy_n(target.data(), size, target_data.data());
+
+  gpu_storage[GPUTarget].set(target_data);
+
+  auto& shader = NN::GPUAcceleration::get().getBackpropSoftmaxCrossEntropyShader();
+  shader.run(gpu_storage, (S + 255) / 256);
+
+  glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+  cpu_sigma_dirty = true;
+  gpu_sigma_dirty = false;
+};
+
+
+
+template <unsigned int S, unsigned int D>
+inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse(std::span<const float> target) noexcept {
+  activateNodes();
+  if(!gpu_acceleration){
+    if(size_t(S) > multithreading_acceleration_size_threshold) backprop_initial_softmax_cross_entropy_fuse_threads(target);
+    else backprop_initial_softmax_cross_entropy_fuse_cpu(target);
+  }
+  else{
+    backprop_initial_softmax_cross_entropy_fuse_gpu(target);
+  };
   activated_after_forward = false;
 };
 
@@ -273,15 +811,100 @@ inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse(std::sp
 
 template <unsigned int S, unsigned int D>
 template <unsigned int N>
-inline void NN::Layer<S, D>::backprop(Layer<D, N>& next_layer) noexcept {
-  activateNodes();
-  const double* sigma_next = next_layer.getSigma();
+inline void NN::Layer<S, D>::backprop_cpu(Layer<D, N>& next_layer) noexcept {
+  if(cpu_weights_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUWeights].get(data);
+    std::memcpy(weights, data.data(), sizeof(weights));
+    cpu_weights_dirty = false;
+  };
 
-  double gradient[S]{};
-  double output[S]{};
+  if(cpu_nodes_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUNodes].get(data);
+    std::memcpy(nodes, data.data(), sizeof(nodes));
+    cpu_nodes_dirty = false;
+  };
+
+  if(cpu_activated_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUActivated].get(data);
+    std::memcpy(activated, data.data(), sizeof(activated));
+    cpu_activated_dirty = false;
+  };
+
+  const float* sigma_next = next_layer.getSigma();
+  float gradient[S]{};
+  float output[S]{};
+
+  for(size_t j = 0; j < D; j++){
+    const float factor = sigma_next[j];
+    const float* row = weights + j * (S + 1);
+    for(size_t i = 0; i < S; i++) gradient[i] += row[i] * factor;
+  };
+
+  std::span<const float> layer(nodes, S);
+
+  if(dynamic_cast<NN::Linear*>(activation.get())){
+    std::memcpy(output, gradient, sizeof(output));
+  }
+  else if(dynamic_cast<NN::Sigmoid*>(activation.get()) || dynamic_cast<NN::ReLU*>(activation.get())){
+    for(size_t i = 0; i < S; i++) output[i] = gradient[i] * activation->fun_prime(layer, i, i);
+  }
+  else{
+    for(size_t i = 0; i < S; i++){
+      float sum = 0.0;
+      for(size_t j = 0; j < S; j++) sum += gradient[j] * activation->fun_prime(layer, j, i);
+      output[i] = sum;
+    };
+  };
+
+  std::memcpy(sigma, output, sizeof(output));
+  cpu_sigma_dirty = false;
+  gpu_sigma_dirty = true;
+
+  for(size_t j = 0; j < D; j++){
+    const float factor = learning_rate * sigma_next[j];
+    float* row = weights + j * (S + 1);
+    for(size_t i = 0; i < S; i++) row[i] -= factor * activated[i];
+    row[S] -= factor;
+  };
+
+  gpu_weights_dirty = true;
+  cpu_weights_dirty = false;
+};
+
+
+
+template <unsigned int S, unsigned int D>
+template <unsigned int N>
+inline void NN::Layer<S, D>::backprop_threads(Layer<D, N>& next_layer) noexcept {
+  if(cpu_weights_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUWeights].get(data);
+    std::memcpy(weights, data.data(), sizeof(weights));
+    cpu_weights_dirty = false;
+  };
+
+  if(cpu_nodes_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUNodes].get(data);
+    std::memcpy(nodes, data.data(), sizeof(nodes));
+    cpu_nodes_dirty = false;
+  };
+
+  if(cpu_activated_dirty){
+    std::vector<float> data;
+    gpu_storage[GPUActivated].get(data);
+    std::memcpy(activated, data.data(), sizeof(activated));
+    cpu_activated_dirty = false;
+  };
+
+  const float* sigma_next = next_layer.getSigma();
+  float gradient[S]{};
+  float output[S]{};
 
   const size_t worker_count = std::min<size_t>(workers.size(), D);
-
   if(partial_gradients.size() != worker_count) partial_gradients.resize(worker_count);
 
   for(size_t worker = 0; worker < worker_count; worker++){
@@ -291,25 +914,26 @@ inline void NN::Layer<S, D>::backprop(Layer<D, N>& next_layer) noexcept {
 
   workers.parallel_for(0, worker_count, [&](size_t begin, size_t end){
     for(size_t worker = begin; worker < end; worker++){
-      double* partial = partial_gradients[worker].data();
+      float* partial = partial_gradients[worker].data();
       const size_t row_begin = worker * D / worker_count;
       const size_t row_end = (worker + 1) * D / worker_count;
 
       for(size_t j = row_begin; j < row_end; j++){
-        const double factor = sigma_next[j];
-        const double* row = weights + j * (S + 1);
+        const float factor = sigma_next[j];
+        const float* row = weights + j * (S + 1);
         for(size_t i = 0; i < S; i++) partial[i] += row[i] * factor;
       };
     };
   });
+
   workers.wait();
 
   for(size_t worker = 0; worker < worker_count; worker++){
-    const double* partial = partial_gradients[worker].data();
+    const float* partial = partial_gradients[worker].data();
     for(size_t i = 0; i < S; i++) gradient[i] += partial[i];
   };
 
-  std::span<const double> layer(nodes, S);
+  std::span<const float> layer(nodes, S);
 
   if(dynamic_cast<NN::Linear*>(activation.get())){
     std::memcpy(output, gradient, sizeof(output));
@@ -320,7 +944,7 @@ inline void NN::Layer<S, D>::backprop(Layer<D, N>& next_layer) noexcept {
   else{
     workers.parallel_for(0, S, [&](size_t begin, size_t end){
       for(size_t i = begin; i < end; i++){
-        double sum = 0.0;
+        float sum = 0.0;
         for(size_t j = 0; j < S; j++) sum += gradient[j] * activation->fun_prime(layer, j, i);
         output[i] = sum;
       };
@@ -329,20 +953,89 @@ inline void NN::Layer<S, D>::backprop(Layer<D, N>& next_layer) noexcept {
   };
 
   std::memcpy(sigma, output, sizeof(output));
+  cpu_sigma_dirty = false;
+  gpu_sigma_dirty = true;
 
   workers.parallel_for(0, D, [&](size_t begin, size_t end){
     for(size_t j = begin; j < end; j++){
-      const double factor = learning_rate * sigma_next[j];
-      double* row = weights + j * (S + 1);
+      const float factor = learning_rate * sigma_next[j];
+      float* row = weights + j * (S + 1);
       for(size_t i = 0; i < S; i++) row[i] -= factor * activated[i];
       row[S] -= factor;
     };
   });
+
   workers.wait();
 
-  activated_after_forward = false;
+  gpu_weights_dirty = true;
+  cpu_weights_dirty = false;
 };
 
+
+
+template <unsigned int S, unsigned int D>
+template <unsigned int N>
+inline void NN::Layer<S, D>::backprop_gpu(Layer<D, N>& next_layer) noexcept {
+  unsigned int activation_id = 0;
+
+  if(dynamic_cast<NN::Linear*>(activation.get())) activation_id = 1;
+  else if(dynamic_cast<NN::Sigmoid*>(activation.get())) activation_id = 2;
+  else if(dynamic_cast<NN::Softmax*>(activation.get())) activation_id = 3;
+  else if(dynamic_cast<NN::ReLU*>(activation.get())) activation_id = 4;
+
+  if(activation_id == 0) return;
+
+  ensure_gpu_storage();
+  next_layer.ensure_gpu_storage();
+
+  if(gpu_activated_dirty){
+    gpu_storage[GPUActivated].set(std::vector<float>(activated, activated + S));
+    gpu_activated_dirty = false;
+  };
+
+  if(next_layer.gpu_sigma_dirty){
+    next_layer.gpu_storage[GPUSigma].set(std::vector<float>(next_layer.sigma, next_layer.sigma + D));
+    next_layer.gpu_sigma_dirty = false;
+  };
+
+  auto& gpu = NN::GPUAcceleration::get();
+  next_layer.gpu_storage[GPUSigma].bind(GPUBufferCount);
+
+  auto& shader = activation_id == 3 ? gpu.getBackpropSoftmaxSigmaShader() : gpu.getBackpropSigmaShader();
+  shader.run(gpu_storage, activation_id == 3 ? 1 : (S + 255) / 256);
+
+  glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+  cpu_sigma_dirty = true;
+  gpu_sigma_dirty = false;
+
+  if(learning_rate != 0.0f){
+    auto& update_shader = gpu.getBackpropUpdateShader();
+    update_shader.run(gpu_storage, (D + 255) / 256);
+
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+    cpu_weights_dirty = true;
+    gpu_weights_dirty = false;
+  };
+};
+
+
+
+template <unsigned int S, unsigned int D>
+template <unsigned int N>
+inline void NN::Layer<S, D>::backprop(Layer<D, N>& next_layer) noexcept {
+  activateNodes();
+  const size_t work = size_t(S) * D;
+  if(!gpu_acceleration){
+    if(work > multithreading_acceleration_size_threshold) backprop_threads(next_layer);
+    else backprop_cpu(next_layer);
+  }
+  else{
+    backprop_gpu(next_layer);
+  };
+  activated_after_forward = false;
+};
 
 
 // =========================== //
@@ -365,7 +1058,7 @@ inline std::string NN::Layer<S, D>::print() const {
 
   bool first = true;
   s += "\nnodes: \n[";
-  for(double el : nodes){
+  for(float el : nodes){
     if(!first) 
       s += ", ";
       s += std::to_string(el);
@@ -376,7 +1069,7 @@ inline std::string NN::Layer<S, D>::print() const {
   first = true;
   unsigned int i = 0;
   s += "\nweights: \n[[";
-  for(double el : weights){
+  for(float el : weights){
     if(!first && i % (S + 1) != 0)
       s += ", ";
 

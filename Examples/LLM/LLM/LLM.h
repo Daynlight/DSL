@@ -40,7 +40,7 @@ private:
   bool model_is_loaded_from_file = false;
   bool is_running = true;
 
-  double learning_rate = 0.001;
+  float learning_rate = 0.001;
   unsigned int learn_samples = 1000;
   unsigned int epoch = 200;
   unsigned int learning_set_repeats = 1;
@@ -49,12 +49,12 @@ private:
   bool balanced_learning = false;
   bool dynamic_lr = false;
 
-  static constexpr size_t context_size = 32;
+  static constexpr size_t context_size = 16;
   static constexpr size_t vocab_size = 1000;
   static constexpr size_t input_size = context_size * vocab_size;
   static constexpr size_t response_size = 256;
 
-  NN::NeuralNetwork<input_size, 8192, 8192, 4096, 2048, 1024, vocab_size, 1> model;
+  NN::NeuralNetwork<input_size, 16384, 8192, 4096, 4096, 2049, 2049, 2049, vocab_size, 1> model;
 
   std::filesystem::path path_to_tokens = std::filesystem::path(__FILE__).parent_path() / "../data/tokens";
 
@@ -82,7 +82,7 @@ public:
 public:
   void setLearnFilePath(std::filesystem::path path) noexcept;
   std::filesystem::path getLearnFilePath() const noexcept;
-  void setLearningRate(double value) noexcept;
+  void setLearningRate(float value) noexcept;
   void setLearningEpoch(int value) noexcept;
   void setLearningSamples(int value) noexcept;
   void setLearningSetRepeats(int value) noexcept;
@@ -106,9 +106,9 @@ public:
   std::string readLearningSet() const noexcept;
   std::string prepareLearningSet(const std::string& text) const noexcept;
   template<size_t S>
-  std::pair<double, std::array<double, S>> calculateLearningSetEntropy(const std::string& text) const noexcept;
+  std::pair<float, std::array<float, S>> calculateLearningSetEntropy(const std::string& text) const noexcept;
   void setModel() noexcept;
-  void learningInfo(bool show_learning_ifno, const std::array<double, vocab_size>& target, size_t expected, double& ce_sum, double& mse_sum, size_t& correct, size_t& log_samples) noexcept;
+  void learningInfo(bool show_learning_ifno, const std::array<float, vocab_size>& target, size_t expected, float& ce_sum, float& mse_sum, size_t& correct, size_t& log_samples) noexcept;
 
   void createTokens(const std::string& text) noexcept;
   void saveTokensToFile() const noexcept;

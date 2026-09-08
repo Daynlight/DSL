@@ -12,13 +12,13 @@
 // ====================== //
 // ========= MSE ======== //
 // ====================== //
-inline double NN::MSE::fun(double x, double t) const noexcept {
+inline float NN::MSE::fun(float x, float t) const noexcept {
   return (x - t)*(x - t)/2;
 };
 
 
 
-inline double NN::MSE::fun_prime(double x, double t) const noexcept {
+inline float NN::MSE::fun_prime(float x, float t) const noexcept {
   return x - t;
 };
 
@@ -27,16 +27,16 @@ inline double NN::MSE::fun_prime(double x, double t) const noexcept {
 // ====================== //
 // ==== CrossEntropy ==== //
 // ====================== //
-inline double NN::CrossEntropy::fun(double x, double t) const noexcept {
-  constexpr double epsilon = 1e-12;
-  x = std::clamp(x, epsilon, 1.0);
+inline float NN::CrossEntropy::fun(float x, float t) const noexcept {
+  constexpr float epsilon = 0.0000001f;
+  x = std::clamp(x, epsilon, 1.0f);
   return -t * std::log(x);
 };
 
 
 
-inline double NN::CrossEntropy::fun_prime(double x, double t) const noexcept {
-  constexpr double epsilon = 1e-12;
-  x = std::clamp(x, epsilon, 1.0);
+inline float NN::CrossEntropy::fun_prime(float x, float t) const noexcept {
+  constexpr float epsilon = 0.0000001f;
+  x = std::clamp(x, epsilon, 1.0f);
   return -t / x;
 };

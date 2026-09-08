@@ -28,11 +28,11 @@
 namespace {
 class TestLoss : public NN::iLoss{
 public:
-  double fun(double x, double t) const noexcept override{
+  float fun(float x, float t) const noexcept override{
     return std::abs(x - t);
   };
 
-  double fun_prime(double x, double t) const noexcept override{
+  float fun_prime(float x, float t) const noexcept override{
     if(x > t) return 1.0;
     if(x < t) return -1.0;
     return 0.0;
@@ -117,8 +117,8 @@ TEST(NeuralNetworkDefaultConstructor, InitializesLayers){
 TEST(NeuralNetworkDefaultConstructor, InitializesDefaultLearningRate){
   NN::NeuralNetwork<2, 3, 1> network;
 
-  EXPECT_NEAR(std::get<0>(network.layers).getLearningRate(), 0.005, 1e-12);
-  EXPECT_NEAR(std::get<1>(network.layers).getLearningRate(), 0.005, 1e-12);
+  EXPECT_NEAR(std::get<0>(network.layers).getLearningRate(), 0.005, 1e-6);
+  EXPECT_NEAR(std::get<1>(network.layers).getLearningRate(), 0.005, 1e-6);
 };
 
 TEST(NeuralNetworkDefaultConstructor, InitializesDefaultActivation){
@@ -151,7 +151,7 @@ TEST(NeuralNetworkSetLearningRate, SetsSingleLayer){
 
   network.setLearningRate(0.001);
 
-  EXPECT_NEAR(std::get<0>(network.layers).getLearningRate(), 0.001, 1e-12);
+  EXPECT_NEAR(std::get<0>(network.layers).getLearningRate(), 0.001, 1e-6);
 };
 
 TEST(NeuralNetworkSetLearningRate, SetsEveryLayer){
@@ -159,9 +159,9 @@ TEST(NeuralNetworkSetLearningRate, SetsEveryLayer){
 
   network.setLearningRate(0.001);
 
-  EXPECT_NEAR(std::get<0>(network.layers).getLearningRate(), 0.001, 1e-12);
-  EXPECT_NEAR(std::get<1>(network.layers).getLearningRate(), 0.001, 1e-12);
-  EXPECT_NEAR(std::get<2>(network.layers).getLearningRate(), 0.001, 1e-12);
+  EXPECT_NEAR(std::get<0>(network.layers).getLearningRate(), 0.001, 1e-6);
+  EXPECT_NEAR(std::get<1>(network.layers).getLearningRate(), 0.001, 1e-6);
+  EXPECT_NEAR(std::get<2>(network.layers).getLearningRate(), 0.001, 1e-6);
 };
 
 TEST(NeuralNetworkSetLearningRate, ReplacesPreviousLearningRate){
@@ -170,8 +170,8 @@ TEST(NeuralNetworkSetLearningRate, ReplacesPreviousLearningRate){
   network.setLearningRate(0.1);
   network.setLearningRate(0.0001);
 
-  EXPECT_NEAR(std::get<0>(network.layers).getLearningRate(), 0.0001, 1e-12);
-  EXPECT_NEAR(std::get<1>(network.layers).getLearningRate(), 0.0001, 1e-12);
+  EXPECT_NEAR(std::get<0>(network.layers).getLearningRate(), 0.0001, 1e-6);
+  EXPECT_NEAR(std::get<1>(network.layers).getLearningRate(), 0.0001, 1e-6);
 };
 
 
@@ -248,9 +248,9 @@ TEST(NeuralNetworkSetInput, SetsInputLayerNodes){
 
   network.setInput({1.0, 2.0, 3.0});
 
-  EXPECT_NEAR(std::get<0>(network.layers)[0], 1.0, 1e-12);
-  EXPECT_NEAR(std::get<0>(network.layers)[1], 2.0, 1e-12);
-  EXPECT_NEAR(std::get<0>(network.layers)[2], 3.0, 1e-12);
+  EXPECT_NEAR(std::get<0>(network.layers)[0], 1.0, 1e-6);
+  EXPECT_NEAR(std::get<0>(network.layers)[1], 2.0, 1e-6);
+  EXPECT_NEAR(std::get<0>(network.layers)[2], 3.0, 1e-6);
 };
 
 TEST(NeuralNetworkSetInput, DoesNotModifyOtherLayers){
@@ -260,11 +260,11 @@ TEST(NeuralNetworkSetInput, DoesNotModifyOtherLayers){
 
   network.setInput({1.0, 2.0});
 
-  EXPECT_NEAR(std::get<0>(network.layers)[0], 1.0, 1e-12);
-  EXPECT_NEAR(std::get<0>(network.layers)[1], 2.0, 1e-12);
+  EXPECT_NEAR(std::get<0>(network.layers)[0], 1.0, 1e-6);
+  EXPECT_NEAR(std::get<0>(network.layers)[1], 2.0, 1e-6);
 
-  EXPECT_NEAR(std::get<1>(network.layers)[0], 8.0, 1e-12);
-  EXPECT_NEAR(std::get<1>(network.layers)[1], 9.0, 1e-12);
+  EXPECT_NEAR(std::get<1>(network.layers)[0], 8.0, 1e-6);
+  EXPECT_NEAR(std::get<1>(network.layers)[1], 9.0, 1e-6);
 };
 
 TEST(NeuralNetworkSetInput, IgnoresAdditionalNodes){
@@ -272,8 +272,8 @@ TEST(NeuralNetworkSetInput, IgnoresAdditionalNodes){
 
   network.setInput({1.0, 2.0, 3.0, 4.0});
 
-  EXPECT_NEAR(std::get<0>(network.layers)[0], 1.0, 1e-12);
-  EXPECT_NEAR(std::get<0>(network.layers)[1], 2.0, 1e-12);
+  EXPECT_NEAR(std::get<0>(network.layers)[0], 1.0, 1e-6);
+  EXPECT_NEAR(std::get<0>(network.layers)[1], 2.0, 1e-6);
 };
 
 
@@ -292,11 +292,11 @@ TEST(NeuralNetworkGetResult, ReflectsLastLayerValues){
 
   std::get<1>(network.layers).setNodes({4.0, 8.0});
 
-  double* result = network.getResult();
+  float* result = network.getResult();
 
   ASSERT_NE(result, nullptr);
-  EXPECT_NEAR(result[0], 4.0, 1e-12);
-  EXPECT_NEAR(result[1], 8.0, 1e-12);
+  EXPECT_NEAR(result[0], 4.0, 1e-6);
+  EXPECT_NEAR(result[1], 8.0, 1e-6);
 };
 
 
@@ -316,8 +316,8 @@ TEST(NeuralNetworkForward, ForwardsThroughTwoLayers){
 
   network.forward();
 
-  EXPECT_NEAR(network.getResult()[0], 11.0, 1e-12);
-  EXPECT_NEAR(network.getResult()[1], 29.0, 1e-12);
+  EXPECT_NEAR(network.getResult()[0], 11.0, 1e-6);
+  EXPECT_NEAR(network.getResult()[1], 29.0, 1e-6);
 };
 
 TEST(NeuralNetworkForward, ForwardsThroughMultipleLayers){
@@ -337,11 +337,11 @@ TEST(NeuralNetworkForward, ForwardsThroughMultipleLayers){
 
   network.forward();
 
-  EXPECT_NEAR(std::get<1>(network.layers)[0], 4.0, 1e-12);
-  EXPECT_NEAR(std::get<1>(network.layers)[1], 4.0, 1e-12);
+  EXPECT_NEAR(std::get<1>(network.layers)[0], 4.0, 1e-6);
+  EXPECT_NEAR(std::get<1>(network.layers)[1], 4.0, 1e-6);
 
-  EXPECT_NEAR(network.getResult()[0], 13.0, 1e-12);
-  EXPECT_NEAR(network.getResult()[1], 18.0, 1e-12);
+  EXPECT_NEAR(network.getResult()[0], 13.0, 1e-6);
+  EXPECT_NEAR(network.getResult()[1], 18.0, 1e-6);
 };
 
 TEST(NeuralNetworkForward, AppliesActivation){
@@ -354,7 +354,7 @@ TEST(NeuralNetworkForward, AppliesActivation){
 
   network.forward();
 
-  EXPECT_NEAR(network.getResult()[0], 1.0, 1e-12);
+  EXPECT_NEAR(network.getResult()[0], 1.0, 1e-6);
 };
 
 TEST(NeuralNetworkForward, IncludesBias){
@@ -365,7 +365,7 @@ TEST(NeuralNetworkForward, IncludesBias){
 
   network.forward();
 
-  EXPECT_NEAR(network.getResult()[0], 7.0, 1e-12);
+  EXPECT_NEAR(network.getResult()[0], 7.0, 1e-6);
 };
 
 TEST(NeuralNetworkForward, ProducesFiniteValues){
@@ -374,7 +374,7 @@ TEST(NeuralNetworkForward, ProducesFiniteValues){
   network.setInput({0.2, 0.4, 0.6});
   network.forward();
 
-  double* result = network.getResult();
+  float* result = network.getResult();
 
   ASSERT_NE(result, nullptr);
 
@@ -399,8 +399,8 @@ TEST(NeuralNetworkForwardImpl, ForwardsRequestedConnections){
 
   network.forwardImpl(std::index_sequence<0>{});
 
-  EXPECT_NEAR(network.getResult()[0], 11.0, 1e-12);
-  EXPECT_NEAR(network.getResult()[1], 29.0, 1e-12);
+  EXPECT_NEAR(network.getResult()[0], 11.0, 1e-6);
+  EXPECT_NEAR(network.getResult()[1], 29.0, 1e-6);
 };
 
 
@@ -417,7 +417,7 @@ TEST(NeuralNetworkBackpropInitial, CalculatesLastLayerSigma){
   network.forward();
   network.backpropInitial({1.0});
 
-  EXPECT_NEAR(std::get<1>(network.layers).getSigma()[0], 1.0, 1e-12);
+  EXPECT_NEAR(std::get<1>(network.layers).getSigma()[0], 1.0, 1e-6);
 };
 
 TEST(NeuralNetworkBackpropInitial, CalculatesZeroSigmaForCorrectResult){
@@ -429,7 +429,7 @@ TEST(NeuralNetworkBackpropInitial, CalculatesZeroSigmaForCorrectResult){
   network.forward();
   network.backpropInitial({2.0});
 
-  EXPECT_NEAR(std::get<1>(network.layers).getSigma()[0], 0.0, 1e-12);
+  EXPECT_NEAR(std::get<1>(network.layers).getSigma()[0], 0.0, 1e-6);
 };
 
 
@@ -449,9 +449,9 @@ TEST(NeuralNetworkBackpropImpl, CalculatesSigmaAndUpdatesWeights){
 
   network.backpropImpl(std::index_sequence<0>{});
 
-  EXPECT_NEAR(std::get<0>(network.layers).getSigma()[0], 1.0, 1e-12);
-  EXPECT_NEAR(std::get<0>(network.layers).getWeights()[0], 0.8, 1e-12);
-  EXPECT_NEAR(std::get<0>(network.layers).getWeights()[1], -0.1, 1e-12);
+  EXPECT_NEAR(std::get<0>(network.layers).getSigma()[0], 1.0, 1e-6);
+  EXPECT_NEAR(std::get<0>(network.layers).getWeights()[0], 0.8, 1e-6);
+  EXPECT_NEAR(std::get<0>(network.layers).getWeights()[1], -0.1, 1e-6);
 };
 
 
@@ -470,11 +470,11 @@ TEST(NeuralNetworkBackprop, CalculatesSigmaAndUpdatesWeights){
   network.forward();
   network.backprop({1.0});
 
-  EXPECT_NEAR(std::get<1>(network.layers).getSigma()[0], 1.0, 1e-12);
-  EXPECT_NEAR(std::get<0>(network.layers).getSigma()[0], 1.0, 1e-12);
+  EXPECT_NEAR(std::get<1>(network.layers).getSigma()[0], 1.0, 1e-6);
+  EXPECT_NEAR(std::get<0>(network.layers).getSigma()[0], 1.0, 1e-6);
 
-  EXPECT_NEAR(std::get<0>(network.layers).getWeights()[0], 0.8, 1e-12);
-  EXPECT_NEAR(std::get<0>(network.layers).getWeights()[1], -0.1, 1e-12);
+  EXPECT_NEAR(std::get<0>(network.layers).getWeights()[0], 0.8, 1e-6);
+  EXPECT_NEAR(std::get<0>(network.layers).getWeights()[1], -0.1, 1e-6);
 };
 
 TEST(NeuralNetworkBackprop, DoesNotChangeWeightsForZeroLoss){
@@ -488,8 +488,8 @@ TEST(NeuralNetworkBackprop, DoesNotChangeWeightsForZeroLoss){
   network.forward();
   network.backprop({2.0});
 
-  EXPECT_NEAR(std::get<0>(network.layers).getWeights()[0], 1.0, 1e-12);
-  EXPECT_NEAR(std::get<0>(network.layers).getWeights()[1], 0.0, 1e-12);
+  EXPECT_NEAR(std::get<0>(network.layers).getWeights()[0], 1.0, 1e-6);
+  EXPECT_NEAR(std::get<0>(network.layers).getWeights()[1], 0.0, 1e-6);
 };
 
 TEST(NeuralNetworkBackprop, UpdatesMultipleConnections){
@@ -503,13 +503,13 @@ TEST(NeuralNetworkBackprop, UpdatesMultipleConnections){
 
   network.forward();
 
-  const double first_before = std::get<0>(network.layers).getWeights()[0];
-  const double second_before = std::get<1>(network.layers).getWeights()[0];
+  const float first_before = std::get<0>(network.layers).getWeights()[0];
+  const float second_before = std::get<1>(network.layers).getWeights()[0];
 
   network.backprop({0.0});
 
-  EXPECT_NEAR(std::get<0>(network.layers).getWeights()[0], 0.9, 1e-12);
-  EXPECT_NEAR(std::get<1>(network.layers).getWeights()[0], 0.9, 1e-12);
+  EXPECT_NEAR(std::get<0>(network.layers).getWeights()[0], 0.9, 1e-6);
+  EXPECT_NEAR(std::get<1>(network.layers).getWeights()[0], 0.9, 1e-6);
 
   EXPECT_NE(std::get<0>(network.layers).getWeights()[0], first_before);
   EXPECT_NE(std::get<1>(network.layers).getWeights()[0], second_before);
@@ -527,16 +527,16 @@ TEST(NeuralNetworkBackprop, KeepsWeightsAndSigmaFinite){
     network.backprop({0.5, 0.5, 0.5, 0.5});
   };
 
-  for(double weight : std::get<0>(network.layers).weights)
+  for(float weight : std::get<0>(network.layers).weights)
     EXPECT_TRUE(std::isfinite(weight));
 
-  for(double weight : std::get<1>(network.layers).weights)
+  for(float weight : std::get<1>(network.layers).weights)
     EXPECT_TRUE(std::isfinite(weight));
 
-  for(double sigma : std::get<0>(network.layers).sigma)
+  for(float sigma : std::get<0>(network.layers).sigma)
     EXPECT_TRUE(std::isfinite(sigma));
 
-  for(double sigma : std::get<1>(network.layers).sigma)
+  for(float sigma : std::get<1>(network.layers).sigma)
     EXPECT_TRUE(std::isfinite(sigma));
 };
 
@@ -555,15 +555,15 @@ TEST(NeuralNetworkIntegration, BackpropReducesLossForSimpleSample){
 
   network.forward();
 
-  const double target = 1.0;
-  const double before = std::pow(network.getResult()[0] - target, 2.0) / 2.0;
+  const float target = 1.0;
+  const float before = std::pow(network.getResult()[0] - target, 2.0) / 2.0;
 
   network.backprop({target});
 
   network.setInput({1.0});
   network.forward();
 
-  const double after = std::pow(network.getResult()[0] - target, 2.0) / 2.0;
+  const float after = std::pow(network.getResult()[0] - target, 2.0) / 2.0;
 
   EXPECT_LT(after, before);
 };
@@ -579,14 +579,14 @@ TEST(NeuralNetworkIntegration, DifferentInputsProduceDifferentResults){
   network.setInput({1.0, 2.0});
   network.forward();
 
-  const double first_a = network.getResult()[0];
-  const double first_b = network.getResult()[1];
+  const float first_a = network.getResult()[0];
+  const float first_b = network.getResult()[1];
 
   network.setInput({3.0, 4.0});
   network.forward();
 
-  const double second_a = network.getResult()[0];
-  const double second_b = network.getResult()[1];
+  const float second_a = network.getResult()[0];
+  const float second_b = network.getResult()[1];
 
   EXPECT_NE(first_a, second_a);
   EXPECT_NE(first_b, second_b);
@@ -607,7 +607,7 @@ TEST(NeuralNetworkIntegration, RepeatedTrainingKeepsResultFinite){
   network.setInput({0.2, 0.4});
   network.forward();
 
-  double* result = network.getResult();
+  float* result = network.getResult();
 
   ASSERT_NE(result, nullptr);
 
@@ -687,16 +687,16 @@ TEST(NeuralNetworkDeserialize, RestoresWeights){
   NN::NeuralNetwork<2, 2, 1> network2;
   network2.deserialize(data);
 
-  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[0], 0.1, 1e-12);
-  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[1], 0.2, 1e-12);
-  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[2], 0.3, 1e-12);
-  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[3], 0.4, 1e-12);
-  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[4], 0.5, 1e-12);
-  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[5], 0.6, 1e-12);
+  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[0], 0.1, 1e-6);
+  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[1], 0.2, 1e-6);
+  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[2], 0.3, 1e-6);
+  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[3], 0.4, 1e-6);
+  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[4], 0.5, 1e-6);
+  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[5], 0.6, 1e-6);
 
-  EXPECT_NEAR(std::get<1>(network2.layers).getWeights()[0], 0.7, 1e-12);
-  EXPECT_NEAR(std::get<1>(network2.layers).getWeights()[1], 0.8, 1e-12);
-  EXPECT_NEAR(std::get<1>(network2.layers).getWeights()[2], 0.9, 1e-12);
+  EXPECT_NEAR(std::get<1>(network2.layers).getWeights()[0], 0.7, 1e-6);
+  EXPECT_NEAR(std::get<1>(network2.layers).getWeights()[1], 0.8, 1e-6);
+  EXPECT_NEAR(std::get<1>(network2.layers).getWeights()[2], 0.9, 1e-6);
 };
 
 TEST(NeuralNetworkDeserialize, RestoresLearningRate){
@@ -707,8 +707,8 @@ TEST(NeuralNetworkDeserialize, RestoresLearningRate){
   NN::NeuralNetwork<2, 2, 1> network2;
   network2.deserialize(data);
 
-  EXPECT_NEAR(std::get<0>(network2.layers).getLearningRate(), 0.123, 1e-12);
-  EXPECT_NEAR(std::get<1>(network2.layers).getLearningRate(), 0.123, 1e-12);
+  EXPECT_NEAR(std::get<0>(network2.layers).getLearningRate(), 0.123, 1e-6);
+  EXPECT_NEAR(std::get<1>(network2.layers).getLearningRate(), 0.123, 1e-6);
 };
 
 TEST(NeuralNetworkDeserialize, RestoresActivation){
@@ -760,19 +760,19 @@ TEST(NeuralNetworkDeserialize, RestoresWholeNetwork){
   NN::NeuralNetwork<2, 2, 1> network2;
   network2.deserialize(data);
 
-  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[0], 0.1, 1e-12);
-  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[1], 0.2, 1e-12);
-  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[2], 0.3, 1e-12);
-  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[3], 0.4, 1e-12);
-  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[4], 0.5, 1e-12);
-  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[5], 0.6, 1e-12);
+  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[0], 0.1, 1e-6);
+  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[1], 0.2, 1e-6);
+  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[2], 0.3, 1e-6);
+  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[3], 0.4, 1e-6);
+  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[4], 0.5, 1e-6);
+  EXPECT_NEAR(std::get<0>(network2.layers).getWeights()[5], 0.6, 1e-6);
 
-  EXPECT_NEAR(std::get<1>(network2.layers).getWeights()[0], 0.7, 1e-12);
-  EXPECT_NEAR(std::get<1>(network2.layers).getWeights()[1], 0.8, 1e-12);
-  EXPECT_NEAR(std::get<1>(network2.layers).getWeights()[2], 0.9, 1e-12);
+  EXPECT_NEAR(std::get<1>(network2.layers).getWeights()[0], 0.7, 1e-6);
+  EXPECT_NEAR(std::get<1>(network2.layers).getWeights()[1], 0.8, 1e-6);
+  EXPECT_NEAR(std::get<1>(network2.layers).getWeights()[2], 0.9, 1e-6);
 
-  EXPECT_NEAR(std::get<0>(network2.layers).getLearningRate(), 0.02, 1e-12);
-  EXPECT_NEAR(std::get<1>(network2.layers).getLearningRate(), 0.02, 1e-12);
+  EXPECT_NEAR(std::get<0>(network2.layers).getLearningRate(), 0.02, 1e-6);
+  EXPECT_NEAR(std::get<1>(network2.layers).getLearningRate(), 0.02, 1e-6);
 
   EXPECT_NE(dynamic_cast<NN::Sigmoid*>(std::get<0>(network2.layers).getActivation().get()), nullptr);
   EXPECT_NE(dynamic_cast<NN::Linear*>(std::get<1>(network2.layers).getActivation().get()), nullptr);

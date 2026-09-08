@@ -33,12 +33,12 @@ void Minus(){
   NN::Layer<2, 1> e;
   NN::Layer<1, 0> g;
 
-  const double learning_rate = 0.001;
+  const float learning_rate = 0.001;
   const unsigned int modulo_number = 100;
   const unsigned int learn_samples = 1000;
   const unsigned int tests = 1000000;
   const unsigned int epoch = 1000;
-  const double tolerance = 1.0;
+  const float tolerance = 1.0;
   e.setLearningRate(learning_rate);
   g.setLearningRate(learning_rate);
   fmt::println(fg(fmt::color::yellow), "-- Parameters:");
@@ -52,34 +52,34 @@ void Minus(){
   fmt::println(fg(fmt::color::yellow), "-- Learning from random set");
   for(unsigned int j = 0; j < epoch; j++){
     for(unsigned int i = 0; i < learn_samples; i++) {
-      double x = (rand()%modulo_number);
-      double y = (rand()%modulo_number);
+      float x = (rand()%modulo_number);
+      float y = (rand()%modulo_number);
 
       NN::Utils::progressBar(i + j * learn_samples, learn_samples * epoch);
 
       e.setNodes({x / modulo_number, y / modulo_number});
       e.forward(g);
 
-      double val = x - y;
-      double res = (val / modulo_number);
+      float val = x - y;
+      float res = (val / modulo_number);
       g.backprop_initial({res});
       e.backprop(g);
     };
   };
 
   fmt::println(fg(fmt::color::yellow), "-- Testing on random set");
-  double sum = 0;
+  float sum = 0;
   for(unsigned int i = 0; i < tests; i++) {
-    double x = (rand()%modulo_number);
-    double y = (rand()%modulo_number);
+    float x = (rand()%modulo_number);
+    float y = (rand()%modulo_number);
 
     NN::Utils::progressBar(i, tests);
 
     e.setNodes({x / modulo_number, y / modulo_number});
     e.forward(g);
 
-    double val = x - y;
-    double res = val / modulo_number;
+    float val = x - y;
+    float res = val / modulo_number;
     if ((fabs(g[0] - res) * modulo_number < tolerance ? 1 : 0)) sum += 1;
   };
   if((sum / tests) * 100 >= 90) fmt::println(fg(fmt::color::green), "avg: {}%", (sum / tests) * 100);

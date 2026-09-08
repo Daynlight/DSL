@@ -15,34 +15,34 @@
 namespace NN{
 class iActivation{
 public:
-  virtual double fun(std::span<const double> layer, size_t i) const noexcept = 0;
-  virtual double fun_prime(std::span<const double> layer, size_t i, size_t j) const noexcept = 0;
+  virtual float fun(std::span<const float> layer, size_t i) const noexcept = 0;
+  virtual float fun_prime(std::span<const float> layer, size_t i, size_t j) const noexcept = 0;
 };
 
 
 
 class Linear : public iActivation{
 public:
-  double fun(std::span<const double> layer, size_t i) const noexcept;
-  double fun_prime(std::span<const double> layer, size_t i, size_t j) const noexcept;
+  float fun(std::span<const float> layer, size_t i) const noexcept;
+  float fun_prime(std::span<const float> layer, size_t i, size_t j) const noexcept;
 };
 
 class Sigmoid : public iActivation{
 public:
-  double fun(std::span<const double> layer, size_t i) const noexcept;
-  double fun_prime(std::span<const double> layer, size_t i, size_t j) const noexcept;
+  float fun(std::span<const float> layer, size_t i) const noexcept;
+  float fun_prime(std::span<const float> layer, size_t i, size_t j) const noexcept;
 };
 
 class Softmax : public iActivation{
 public:
-  double fun(std::span<const double> layer, size_t i) const noexcept;
-  double fun_prime(std::span<const double> layer, size_t i, size_t j) const noexcept;
+  float fun(std::span<const float> layer, size_t i) const noexcept;
+  float fun_prime(std::span<const float> layer, size_t i, size_t j) const noexcept;
 };
 
 class ReLU : public iActivation{
 public:
-  double fun(std::span<const double> layer, size_t i) const noexcept;
-  double fun_prime(std::span<const double> layer, size_t i, size_t j) const noexcept;
+  float fun(std::span<const float> layer, size_t i) const noexcept;
+  float fun_prime(std::span<const float> layer, size_t i, size_t j) const noexcept;
 };
 };
 

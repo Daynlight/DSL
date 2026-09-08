@@ -14,7 +14,7 @@ option(NEURAL_NETWORK_BUILD_EXAMPLES "Build Examples" ON)
 option(NEURAL_NETWORK_BUILD_TESTS "Build Tests" ON)
 
 ########################### Add dependencies ########################### 
-
+find_package(CWindow CONFIG REQUIRED)
 
 ########################### add subdirectories ########################### 
 add_subdirectory(NeuralNetwork)

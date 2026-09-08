@@ -63,7 +63,7 @@ inline NN::NeuralNetwork<First, Second, Rest...>& NN::NeuralNetwork<First, Secon
 // ======= Constructors ====== //
 // =========================== //
 template<unsigned int First, unsigned int Second, unsigned int... Rest>
-inline void NN::NeuralNetwork<First, Second, Rest...>::setLearningRate(double learning_rate) noexcept {
+inline void NN::NeuralNetwork<First, Second, Rest...>::setLearningRate(float learning_rate) noexcept {
   std::apply([&](auto&... layer) {
     (layer.setLearningRate(learning_rate), ...);
   }, layers);
@@ -92,21 +92,21 @@ inline void NN::NeuralNetwork<First, Second, Rest...>::setLoss() noexcept {
 
 
 template<unsigned int First, unsigned int Second, unsigned int... Rest>
-inline void NN::NeuralNetwork<First, Second, Rest...>::setInput(std::initializer_list<double> nodes) noexcept {
+inline void NN::NeuralNetwork<First, Second, Rest...>::setInput(std::initializer_list<float> nodes) noexcept {
   std::get<0>(layers).setNodes(nodes);
 };
 
 
 
 template<unsigned int First, unsigned int Second, unsigned int... Rest>
-inline void NN::NeuralNetwork<First, Second, Rest...>::setInput(std::span<const double> nodes) noexcept {
+inline void NN::NeuralNetwork<First, Second, Rest...>::setInput(std::span<const float> nodes) noexcept {
   std::get<0>(layers).setNodes(nodes);
 };
 
 
 
 template <unsigned int First, unsigned int Second, unsigned int... Rest>
-inline void NN::NeuralNetwork<First, Second, Rest...>::setWeights(double min, double max) noexcept {
+inline void NN::NeuralNetwork<First, Second, Rest...>::setWeights(float min, float max) noexcept {
   std::apply([&](auto&... layer) {
     (layer.setWeights(min, max), ...);
   }, layers);
@@ -116,7 +116,7 @@ inline void NN::NeuralNetwork<First, Second, Rest...>::setWeights(double min, do
 
 template <unsigned int First, unsigned int Second, unsigned int... Rest>
 template<std::size_t I>
-inline void NN::NeuralNetwork<First, Second, Rest...>::setWeights(double min, double max) noexcept {
+inline void NN::NeuralNetwork<First, Second, Rest...>::setWeights(float min, float max) noexcept {
   if constexpr(I < 0) return;
   if constexpr(I >= std::tuple_size_v<LayerTuple>) return;
   std::get<I>(layers).setWeights(min, max);
@@ -124,8 +124,27 @@ inline void NN::NeuralNetwork<First, Second, Rest...>::setWeights(double min, do
 
 
 
+template <unsigned int First, unsigned int Second, unsigned int... Rest>
+inline void NN::NeuralNetwork<First, Second, Rest...>::setGPUAcceleration(bool value) noexcept {
+  std::apply([&](auto&... layer) {
+    (layer.setGpuAcceleration(value), ...);
+  }, layers);
+};
+
+
+
+template <unsigned int First, unsigned int Second, unsigned int... Rest>
+template<std::size_t I>
+inline void NN::NeuralNetwork<First, Second, Rest...>::setGPUAcceleration(bool value) noexcept {
+  if constexpr(I < 0) return;
+  if constexpr(I >= std::tuple_size_v<LayerTuple>) return;
+  std::get<I>(layers).setGpuAcceleration(value);
+};
+
+
+
 template<unsigned int First, unsigned int Second, unsigned int... Rest>
-inline double* NN::NeuralNetwork<First, Second, Rest...>::getResult() noexcept {
+inline float* NN::NeuralNetwork<First, Second, Rest...>::getResult() noexcept {
   if constexpr(std::tuple_size_v<LayerTuple> <= 0) return nullptr;
   constexpr std::size_t last = std::tuple_size_v<LayerTuple> - 1;
   return std::get<last>(layers).getNodes();
@@ -134,7 +153,7 @@ inline double* NN::NeuralNetwork<First, Second, Rest...>::getResult() noexcept {
 
 
 template <unsigned int First, unsigned int Second, unsigned int... Rest>
-inline double *NN::NeuralNetwork<First, Second, Rest...>::getActivatedResult() noexcept {
+inline float *NN::NeuralNetwork<First, Second, Rest...>::getActivatedResult() noexcept {
   if constexpr(std::tuple_size_v<LayerTuple> <= 0) return nullptr;
   constexpr std::size_t last = std::tuple_size_v<LayerTuple> - 1;
   return std::get<last>(layers).getActivatedNodes();
@@ -162,7 +181,7 @@ inline void NN::NeuralNetwork<First, Second, Rest...>::forwardImpl(std::index_se
 
 
 template<unsigned int First, unsigned int Second, unsigned int... Rest>
-inline void NN::NeuralNetwork<First, Second, Rest...>::backprop(std::initializer_list<double> loss){
+inline void NN::NeuralNetwork<First, Second, Rest...>::backprop(std::initializer_list<float> loss){
   if constexpr(std::tuple_size_v<LayerTuple> <= 0) return;
   backpropInitial(loss);
   backpropImpl(reverse_sequence(std::make_index_sequence<std::tuple_size_v<LayerTuple> - 1>{}));
@@ -171,7 +190,7 @@ inline void NN::NeuralNetwork<First, Second, Rest...>::backprop(std::initializer
 
 
 template<unsigned int First, unsigned int Second, unsigned int... Rest>
-inline void NN::NeuralNetwork<First, Second, Rest...>::backprop(std::span<const double> loss){
+inline void NN::NeuralNetwork<First, Second, Rest...>::backprop(std::span<const float> loss){
   if constexpr(std::tuple_size_v<LayerTuple> <= 0) return;
   backpropInitial(loss);
   backpropImpl(reverse_sequence(std::make_index_sequence<std::tuple_size_v<LayerTuple> - 1>{}));
@@ -188,7 +207,7 @@ inline void NN::NeuralNetwork<First, Second, Rest...>::backpropImpl(std::index_s
 
 
 template<unsigned int First, unsigned int Second, unsigned int... Rest>
-inline void NN::NeuralNetwork<First, Second, Rest...>::backpropInitial(std::initializer_list<double> loss){
+inline void NN::NeuralNetwork<First, Second, Rest...>::backpropInitial(std::initializer_list<float> loss){
   if constexpr(std::tuple_size_v<LayerTuple> <= 0) return;
   constexpr std::size_t last = std::tuple_size_v<LayerTuple> - 1;
   std::get<last>(layers).backprop_initial(loss);
@@ -197,7 +216,7 @@ inline void NN::NeuralNetwork<First, Second, Rest...>::backpropInitial(std::init
 
 
 template<unsigned int First, unsigned int Second, unsigned int... Rest>
-inline void NN::NeuralNetwork<First, Second, Rest...>::backpropInitial(std::span<const double> loss){
+inline void NN::NeuralNetwork<First, Second, Rest...>::backpropInitial(std::span<const float> loss){
   if constexpr(std::tuple_size_v<LayerTuple> <= 0) return;
   constexpr std::size_t last = std::tuple_size_v<LayerTuple> - 1;
   std::get<last>(layers).backprop_initial(loss);
