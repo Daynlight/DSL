@@ -974,8 +974,8 @@ void checkLayerGPUParity(){
   };
 };
 
-// TEST(LayerMathematics, CPUAndGPUParity){
-//   checkLayerGPUParity<33, 5>();
-//   checkLayerGPUParity<257, 3>();
-//   checkLayerGPUParity<3, 257>();
-// };
+TEST(LayerMathematics, CPUAndGPUParity){
+  checkLayerGPUParity<33, 5>();
+  checkLayerGPUParity<257, 3>();
+  checkLayerGPUParity<3, 257>();
+};
