@@ -119,6 +119,7 @@ private:
   bool cpu_weights_dirty = false;
   bool cpu_activated_dirty = false;
   bool cpu_sigma_dirty = false;
+  const bool debug_logs = false;
   
   bool activated_after_forward = false;
   std::vector<CW::Renderer::GPUStore> gpu_storage;
@@ -140,11 +141,11 @@ public:
 // ============================== //
 public:
   float* getNodes() noexcept;   // O(1)
-  float* getActivatedNodes() noexcept;
   void setNodes(std::initializer_list<float> nodes) noexcept;    // O(n)
   void setNodes(std::span<const float> nodes) noexcept;    // O(n)
-
-  float getActivatedNode(unsigned int i) noexcept;    // O(1)
+  
+  float* getActivatedNodes() noexcept;
+  float getActivatedNode(unsigned int i) noexcept;
   void activateNodes_cpu() noexcept;
   void activateNodes_threads() noexcept;
   void activateNodes_gpu() noexcept;

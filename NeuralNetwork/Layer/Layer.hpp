@@ -35,8 +35,17 @@ template <unsigned int S, unsigned int D>
 inline float *NN::Layer<S, D>::getNodes() noexcept {
   if(cpu_nodes_dirty){
     std::vector<float> data;
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUNodes].get(data);
     std::memcpy(nodes, data.data(), sizeof(nodes));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("getNodes GPUNodes Get: %zu bytes, %.3f ms\n", sizeof(nodes), std::chrono::duration<double, std::milli>(end - start).count());
+    };
     cpu_nodes_dirty = false;
   };
 
@@ -49,32 +58,11 @@ inline float *NN::Layer<S, D>::getNodes() noexcept {
 
 
 template <unsigned int S, unsigned int D>
-inline float *NN::Layer<S, D>::getActivatedNodes() noexcept {
-  activateNodes();
-
-  if(cpu_activated_dirty){
-    std::vector<float> data;
-    gpu_storage[GPUActivated].get(data);
-    std::memcpy(activated, data.data(), sizeof(activated));
-    cpu_activated_dirty = false;
-  };
-
-  return activated;
-};
-
-
-
-template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::setNodes(std::initializer_list<float> nodes) noexcept {
-  if(cpu_nodes_dirty && nodes.size() < S){
-    std::vector<float> data;
-    gpu_storage[GPUNodes].get(data);
-    std::memcpy(this->nodes, data.data(), sizeof(this->nodes));
-    cpu_nodes_dirty = false;
-  };
+  const size_t size = std::min(nodes.size(), size_t(S));
 
-  unsigned int i = 0;
-  for(auto it = nodes.begin(); it != nodes.end() && i < S; ++it, ++i) this->nodes[i] = *it;
+  std::copy_n(nodes.begin(), size, this->nodes);
+  std::fill(this->nodes + size, this->nodes + S, 0.0f);
 
   this->nodes[S] = 1.0f;
   gpu_nodes_dirty = true;
@@ -86,18 +74,10 @@ inline void NN::Layer<S, D>::setNodes(std::initializer_list<float> nodes) noexce
 
 template<unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::setNodes(std::span<const float> nodes) noexcept {
-  if(cpu_nodes_dirty && nodes.size() < S){
-    std::vector<float> data;
-    gpu_storage[GPUNodes].get(data);
-    std::memcpy(this->nodes, data.data(), sizeof(this->nodes));
-    cpu_nodes_dirty = false;
-  };
+  const size_t size = std::min(nodes.size(), size_t(S));
 
-  unsigned int i = 0;
-  for(const float& node : nodes){
-    if(i >= S) break;
-    this->nodes[i++] = node;
-  };
+  std::copy_n(nodes.begin(), size, this->nodes);
+  std::fill(this->nodes + size, this->nodes + S, 0.0f);
 
   this->nodes[S] = 1.0f;
   gpu_nodes_dirty = true;
@@ -108,11 +88,45 @@ inline void NN::Layer<S, D>::setNodes(std::span<const float> nodes) noexcept {
 
 
 template <unsigned int S, unsigned int D>
+inline float *NN::Layer<S, D>::getActivatedNodes() noexcept {
+  activateNodes();
+
+  if(cpu_activated_dirty){
+    std::vector<float> data;
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
+    gpu_storage[GPUActivated].get(data);
+    std::memcpy(activated, data.data(), sizeof(activated));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("getActivatedNodes GPUActivated Get: %zu bytes, %.3f ms\n", sizeof(activated), std::chrono::duration<double, std::milli>(end - start).count());
+    };
+    cpu_activated_dirty = false;
+  };
+
+  return activated;
+};
+
+
+
+template <unsigned int S, unsigned int D>
 inline float NN::Layer<S, D>::getActivatedNode(unsigned int i) noexcept {
   if(cpu_nodes_dirty){
     std::vector<float> data;
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUNodes].get(data);
     std::memcpy(nodes, data.data(), sizeof(nodes));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("getActivatedNode GPUNodes Get: %zu bytes, %.3f ms\n", sizeof(nodes), std::chrono::duration<double, std::milli>(end - start).count());
+    };
     cpu_nodes_dirty = false;
   };
 
@@ -126,8 +140,17 @@ template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::activateNodes_cpu() noexcept {
   if(cpu_nodes_dirty){
     std::vector<float> data;
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUNodes].get(data);
     std::memcpy(nodes, data.data(), sizeof(nodes));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("activateNodes_cpu GPUNodes Get: %zu bytes, %.3f ms\n", sizeof(nodes), std::chrono::duration<double, std::milli>(end - start).count());
+    };
     cpu_nodes_dirty = false;
   };
 
@@ -143,8 +166,17 @@ template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::activateNodes_threads() noexcept {
   if(cpu_nodes_dirty){
     std::vector<float> data;
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUNodes].get(data);
     std::memcpy(nodes, data.data(), sizeof(nodes));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("activateNodes_threads GPUNodes Get: %zu bytes, %.3f ms\n", sizeof(nodes), std::chrono::duration<double, std::milli>(end - start).count());
+    };
     cpu_nodes_dirty = false;
   };
 
@@ -178,7 +210,16 @@ inline void NN::Layer<S, D>::activateNodes_gpu() noexcept {
 
   if(!shader) return;
 
+  if(debug_logs){
+    glFinish();
+  };
+  auto start = std::chrono::steady_clock::now();
   shader->run(gpu_storage, groups);
+  if(debug_logs){
+    glFinish();
+    auto end = std::chrono::steady_clock::now();
+    printf("activateNodes_gpu ActivateNodesShader Run: %.3f ms\n", std::chrono::duration<double, std::milli>(end - start).count());
+  };
   glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
   cpu_activated_dirty = true;
@@ -194,8 +235,17 @@ inline void NN::Layer<S, D>::activateNodes() noexcept {
   if(!gpu_acceleration){
     if(cpu_nodes_dirty){
       std::vector<float> data;
+      if(debug_logs){
+        glFinish();
+      };
+      auto start = std::chrono::steady_clock::now();
       gpu_storage[GPUNodes].get(data);
       std::memcpy(nodes, data.data(), sizeof(nodes));
+      if(debug_logs){
+        glFinish();
+        auto end = std::chrono::steady_clock::now();
+        printf("activateNodes GPUNodes Get: %zu bytes, %.3f ms\n", sizeof(nodes), std::chrono::duration<double, std::milli>(end - start).count());
+      };
       cpu_nodes_dirty = false;
     };
 
@@ -221,8 +271,17 @@ template <unsigned int S, unsigned int D>
 inline float *NN::Layer<S, D>::getWeights() noexcept {
   if(cpu_weights_dirty){
     std::vector<float> data;
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUWeights].get(data);
     std::memcpy(weights, data.data(), sizeof(weights));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("getWeights GPUWeights Get: %zu bytes, %.3f ms\n", sizeof(data), std::chrono::duration<double, std::milli>(end - start).count());
+    };
     cpu_weights_dirty = false;
   };
 
@@ -234,15 +293,10 @@ inline float *NN::Layer<S, D>::getWeights() noexcept {
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::setWeights(std::initializer_list<float> weights) noexcept {
-  if(cpu_weights_dirty && weights.size() < (S + 1) * D){
-    std::vector<float> data;
-    gpu_storage[GPUWeights].get(data);
-    std::memcpy(this->weights, data.data(), sizeof(this->weights));
-    cpu_weights_dirty = false;
-  };
+  const size_t size = std::min(weights.size(), size_t((S + 1) * D));
 
-  unsigned int i = 0;
-  for(auto it = weights.begin(); it != weights.end() && i < (S + 1) * D; ++it, ++i) this->weights[i] = *it;
+  std::copy_n(weights.begin(), size, this->weights);
+  std::fill(this->weights + size, this->weights + (S + 1) * D, 0.0f);
 
   gpu_weights_dirty = true;
   cpu_weights_dirty = false;
@@ -252,7 +306,8 @@ inline void NN::Layer<S, D>::setWeights(std::initializer_list<float> weights) no
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::setWeights(const float* weights) noexcept {
-  for (unsigned int i = 0; i < (S + 1) * D; ++i) this->weights[i] = weights[i];
+  std::copy_n(weights, (S + 1) * D, this->weights);
+
   gpu_weights_dirty = true;
   cpu_weights_dirty = false;
 };
@@ -322,33 +377,119 @@ inline void NN::Layer<S, D>::ensure_gpu_storage() {
 
     nodes[S] = 1.0f;
     NN::GPUAcceleration::get();
+
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUNodes].set(std::vector<float>(nodes, nodes + S + 1));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("Ensure Initial GPUNodes Set: %zu bytes, %.3f ms\n", sizeof(nodes), std::chrono::duration<double, std::milli>(end - start).count());
+    };
+
+    if(debug_logs){
+      glFinish();
+    };
+    start = std::chrono::steady_clock::now();
     gpu_storage[GPUActivated].set(std::vector<float>(S, 0.0f));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("Ensure Initial GPUActivated Set: %zu bytes, %.3f ms\n", sizeof(float) * S, std::chrono::duration<double, std::milli>(end - start).count());
+    };
+
+    if(debug_logs){
+      glFinish();
+    };
+    start = std::chrono::steady_clock::now();
     gpu_storage[GPUSigma].set(std::vector<float>(S, 0.0f));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("Ensure Initial GPUSigma Set: %zu bytes, %.3f ms\n", sizeof(float) * S, std::chrono::duration<double, std::milli>(end - start).count());
+    };
+
+    if(debug_logs){
+      glFinish();
+    };
+    start = std::chrono::steady_clock::now();
     gpu_storage[GPUGradient].set(std::vector<float>(S, 0.0f));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("Ensure Initial GPUGradient Set: %zu bytes, %.3f ms\n", sizeof(float) * S, std::chrono::duration<double, std::milli>(end - start).count());
+    };
+    
+    if(debug_logs){
+      glFinish();
+    };
+    start = std::chrono::steady_clock::now();
     gpu_storage[GPUTarget].set(std::vector<float>(S, 0.0f));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("Ensure Initial GPUTarget Set: %zu bytes, %.3f ms\n", sizeof(float) * S, std::chrono::duration<double, std::milli>(end - start).count());
+    };
 
     gpu_nodes_dirty = false;
     gpu_storage_ready = true;
   };
 
   if(gpu_weights_dirty){
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUWeights].set(std::vector<float>(weights, weights + (S + 1) * D));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("Ensure GPUWeights Set: %zu bytes, %.3f ms\n", sizeof(float) * S, std::chrono::duration<double, std::milli>(end - start).count());
+    };
     gpu_weights_dirty = false;
   };
 
   if(gpu_nodes_dirty){
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUNodes].set(std::vector<float>(nodes, nodes + S + 1));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("Ensure GPUNodes Set: %zu bytes, %.3f ms\n", sizeof(float) * S, std::chrono::duration<double, std::milli>(end - start).count());
+    };
     gpu_nodes_dirty = false;
   };
 
   if(gpu_activated_dirty){
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUActivated].set(std::vector<float>(activated, activated + S));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("Ensure GPUActivated Set: %zu bytes, %.3f ms\n", sizeof(float) * S, std::chrono::duration<double, std::milli>(end - start).count());
+    };
     gpu_activated_dirty = false;
   };
 
   if(gpu_sigma_dirty){
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUSigma].set(std::vector<float>(sigma, sigma + S));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("Ensure GPUSigma Set: %zu bytes, %.3f ms\n", sizeof(float) * S, std::chrono::duration<double, std::milli>(end - start).count());
+    };
     gpu_sigma_dirty = false;
   };
 
@@ -372,6 +513,10 @@ inline void NN::Layer<S, D>::sync_gpu_header() noexcept {
   if(dynamic_cast<NN::MSE*>(loss.get())) loss_id = 1;
   else if(dynamic_cast<NN::CrossEntropy*>(loss.get())) loss_id = 2;
 
+  if(debug_logs){
+    glFinish();
+  };
+  auto start = std::chrono::steady_clock::now();
   gpu_storage[GPUHeader].set(std::vector<float>{
     static_cast<float>(S),
     static_cast<float>(D),
@@ -379,6 +524,11 @@ inline void NN::Layer<S, D>::sync_gpu_header() noexcept {
     static_cast<float>(loss_id),
     learning_rate
   });
+  if(debug_logs){
+    glFinish();
+    auto end = std::chrono::steady_clock::now();
+    printf("Sync GPUHeader Set: %zu bytes, %.3f ms\n", sizeof(float) * 5, std::chrono::duration<double, std::milli>(end - start).count());
+  };
 
   gpu_header_dirty = false;
 };
@@ -430,8 +580,17 @@ template <unsigned int S, unsigned int D>
 inline const float *NN::Layer<S, D>::getSigma() noexcept {
   if(cpu_sigma_dirty){
     std::vector<float> data;
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUSigma].get(data);
     std::memcpy(sigma, data.data(), sizeof(sigma));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("getSigma GPUSigma Get: %zu bytes, %.3f ms\n", sizeof(sigma) * 5, std::chrono::duration<double, std::milli>(end - start).count());
+    };
     cpu_sigma_dirty = false;
   };
 
@@ -448,15 +607,33 @@ template <unsigned int N>
 inline void NN::Layer<S, D>::forward_cpu(Layer<D, N>& layer) noexcept {
   if(cpu_weights_dirty){
     std::vector<float> data;
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUWeights].get(data);
     std::memcpy(weights, data.data(), sizeof(weights));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("forward_cpu GPUWeights Get: %zu bytes, %.3f ms\n", sizeof(weights), std::chrono::duration<double, std::milli>(end - start).count());
+    };
     cpu_weights_dirty = false;
   };
 
   if(cpu_activated_dirty){
-    std::vector<float> data;
+    std::vector<float> data;    
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUActivated].get(data);
     std::memcpy(activated, data.data(), sizeof(activated));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("forward_cpu GPUActivated Get: %zu bytes, %.3f ms\n", sizeof(activated), std::chrono::duration<double, std::milli>(end - start).count());
+    };
     cpu_activated_dirty = false;
   };
 
@@ -483,15 +660,33 @@ template <unsigned int N>
 inline void NN::Layer<S, D>::forward_threads(Layer<D, N>& layer) noexcept {
   if(cpu_weights_dirty){
     std::vector<float> data;
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUWeights].get(data);
     std::memcpy(weights, data.data(), sizeof(weights));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("forward_threads GPUWeights Get: %zu bytes, %.3f ms\n", sizeof(data), std::chrono::duration<double, std::milli>(end - start).count());
+    };
     cpu_weights_dirty = false;
   };
 
   if(cpu_activated_dirty){
     std::vector<float> data;
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUActivated].get(data);
     std::memcpy(activated, data.data(), sizeof(activated));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("forward_threads GPUActivated Get: %zu bytes, %.3f ms\n", sizeof(activated), std::chrono::duration<double, std::milli>(end - start).count());
+    };
     cpu_activated_dirty = false;
   };
 
@@ -526,9 +721,19 @@ inline void NN::Layer<S, D>::forward_gpu(Layer<D, N>& layer) {
   layer.gpu_storage[GPUNodes].bind(GPUBufferCount);
 
   auto& shader = NN::GPUAcceleration::get().getForwardShader();
-  shader.run(gpu_storage, (D + 255) / 256);
-
+  
+  if(debug_logs){
+    glFinish();
+  };
+  auto start = std::chrono::steady_clock::now();
+  shader.run(gpu_storage, D);
+  
   glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+  if(debug_logs){
+    glFinish();
+    auto end = std::chrono::steady_clock::now();
+    printf("forward_gpu ForwardShader Run: %.3f ms\n", std::chrono::duration<double, std::milli>(end - start).count());
+  };
 
   layer.cpu_nodes_dirty = true;
   layer.gpu_nodes_dirty = false;
@@ -568,15 +773,33 @@ template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::backprop_initial_cpu(std::span<const float> target) noexcept {
   if(cpu_nodes_dirty){
     std::vector<float> data;
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUNodes].get(data);
     std::memcpy(nodes, data.data(), sizeof(nodes));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("backprop_initial_cpu GPUNodes Get: %zu bytes, %.3f ms\n", sizeof(nodes), std::chrono::duration<double, std::milli>(end - start).count());
+    };
     cpu_nodes_dirty = false;
   };
 
   if(cpu_activated_dirty){
     std::vector<float> data;
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUActivated].get(data);
     std::memcpy(activated, data.data(), sizeof(activated));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("backprop_initial_cpu GPUActivated Get: %zu bytes, %.3f ms\n", sizeof(activated), std::chrono::duration<double, std::milli>(end - start).count());
+    };
     cpu_activated_dirty = false;
   };
 
@@ -605,15 +828,33 @@ template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::backprop_initial_threads(std::span<const float> target) noexcept {
   if(cpu_nodes_dirty){
     std::vector<float> data;
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUNodes].get(data);
     std::memcpy(nodes, data.data(), sizeof(nodes));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("backprop_initial_threads GPUNodes Get: %zu bytes, %.3f ms\n", sizeof(nodes), std::chrono::duration<double, std::milli>(end - start).count());
+    };
     cpu_nodes_dirty = false;
   };
 
   if(cpu_activated_dirty){
     std::vector<float> data;
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
     gpu_storage[GPUActivated].get(data);
     std::memcpy(activated, data.data(), sizeof(activated));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("backprop_initial_threads GPUActivated Get: %zu bytes, %.3f ms\n", sizeof(activated), std::chrono::duration<double, std::milli>(end - start).count());
+    };
     cpu_activated_dirty = false;
   };
 
@@ -663,12 +904,31 @@ inline void NN::Layer<S, D>::backprop_initial_gpu(std::span<const float> target)
   std::vector<float> target_data(S, 0.0f);
   std::copy_n(target.data(), size, target_data.data());
 
+  if(debug_logs){
+    glFinish();
+  };
+  auto start = std::chrono::steady_clock::now();
   gpu_storage[GPUTarget].set(target_data);
+  if(debug_logs){
+    glFinish();
+    auto end = std::chrono::steady_clock::now();
+    printf("backprop_initial_gpu GPUTarget Get: %zu bytes, %.3f ms\n", sizeof(target_data), std::chrono::duration<double, std::milli>(end - start).count());
+  };
 
   auto& shader = NN::GPUAcceleration::get().getBackpropInitialShader();
+  
+  if(debug_logs){
+    glFinish();
+  };
+  start = std::chrono::steady_clock::now();
   shader.run(gpu_storage, activation_id == 3 ? 1 : (S + 255) / 256);
 
   glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+  if(debug_logs){
+    glFinish();
+    auto end = std::chrono::steady_clock::now();
+    printf("backprop_initial_gpu BackpropInitial Run: %.3f ms\n", std::chrono::duration<double, std::milli>(end - start).count());
+  };
 
   cpu_sigma_dirty = true;
   gpu_sigma_dirty = false;
@@ -781,10 +1041,29 @@ inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse_gpu(std
   std::vector<float> target_data(S, 0.0f);
   std::copy_n(target.data(), size, target_data.data());
 
+  if(debug_logs){
+    glFinish();
+  };
+  auto start = std::chrono::steady_clock::now();
   gpu_storage[GPUTarget].set(target_data);
+  if(debug_logs){
+    glFinish();
+    auto end = std::chrono::steady_clock::now();
+    printf("backprop_initial_gpu GPUTarget Get: %zu bytes, %.3f ms\n", sizeof(target_data), std::chrono::duration<double, std::milli>(end - start).count());
+  };
 
   auto& shader = NN::GPUAcceleration::get().getBackpropSoftmaxCrossEntropyShader();
+  
+  if(debug_logs){
+    glFinish();
+  };
+  start = std::chrono::steady_clock::now();
   shader.run(gpu_storage, (S + 255) / 256);
+  if(debug_logs){
+    glFinish();
+    auto end = std::chrono::steady_clock::now();
+    printf("backprop_initial_softmax_cross_entropy_fuse_gpu BackpropInitialSoftmaxEntropyFuse Run: %.3f ms\n", std::chrono::duration<double, std::milli>(end - start).count());
+  };
 
   glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
@@ -985,35 +1264,62 @@ inline void NN::Layer<S, D>::backprop_gpu(Layer<D, N>& next_layer) noexcept {
 
   if(activation_id == 0) return;
 
+  auto& gpu = NN::GPUAcceleration::get();
+
   ensure_gpu_storage();
   next_layer.ensure_gpu_storage();
 
-  if(gpu_activated_dirty){
-    gpu_storage[GPUActivated].set(std::vector<float>(activated, activated + S));
-    gpu_activated_dirty = false;
-  };
-
-  if(next_layer.gpu_sigma_dirty){
-    next_layer.gpu_storage[GPUSigma].set(std::vector<float>(next_layer.sigma, next_layer.sigma + D));
-    next_layer.gpu_sigma_dirty = false;
-  };
-
-  auto& gpu = NN::GPUAcceleration::get();
   next_layer.gpu_storage[GPUSigma].bind(GPUBufferCount);
 
-  auto& shader = activation_id == 3 ? gpu.getBackpropSoftmaxSigmaShader() : gpu.getBackpropSigmaShader();
-  shader.run(gpu_storage, activation_id == 3 ? 1 : (S + 255) / 256);
+  auto& shader = gpu.getBackpropSigmaShader();
+  
+  if(debug_logs){
+    glFinish();
+  };
+  auto start = std::chrono::steady_clock::now();
+  shader.run(gpu_storage, (S + 31) / 32);
 
   glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+  if(debug_logs){
+    glFinish();
+    auto end = std::chrono::steady_clock::now();
+    printf("backprop_gpu Sigma S=%u D=%u groups=%u: %.3f ms\n", S, D, (S + 31) / 32, std::chrono::duration<double, std::milli>(end - start).count());
+  };
+
+  if(activation_id == 3){
+    auto& softmax_shader = gpu.getBackpropSoftmaxSigmaShader();
+    if(debug_logs){
+      glFinish();
+    };
+    start = std::chrono::steady_clock::now();
+    softmax_shader.run(gpu_storage, 1);
+
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("backprop_gpu softmax S=%u D=%u groups=%u: %.3f ms\n", S, D, 1u, std::chrono::duration<double, std::milli>(end - start).count());
+    };
+  };
 
   cpu_sigma_dirty = true;
   gpu_sigma_dirty = false;
 
   if(learning_rate != 0.0f){
     auto& update_shader = gpu.getBackpropUpdateShader();
-    update_shader.run(gpu_storage, (D + 255) / 256);
+    
+    if(debug_logs){
+      glFinish();
+    };
+    start = std::chrono::steady_clock::now();
+    update_shader.run(gpu_storage, (S + 256) / 256, D);
 
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("backprop_gpu Update S=%u D=%u groups=(%u,%u): %.3f ms\n", S, D, (S + 256) / 256, D, std::chrono::duration<double, std::milli>(end - start).count());
+    };
 
     cpu_weights_dirty = true;
     gpu_weights_dirty = false;

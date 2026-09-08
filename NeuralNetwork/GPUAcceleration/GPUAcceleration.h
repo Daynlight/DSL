@@ -11,6 +11,7 @@
 #include <CWindow/Renderer/OpenGL/Renderer.h>
 
 #include "Shaders.h"
+#include "ActivationShader.h"
 
 
 namespace NN {

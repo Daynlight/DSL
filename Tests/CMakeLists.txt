@@ -9,6 +9,7 @@ cmake_minimum_required(VERSION 3.15)
 
 find_package(Threads REQUIRED)
 find_package(GTest CONFIG REQUIRED)
+find_package(CWindow CONFIG REQUIRED)
 
 set(tests_src
   Unit/CPUTemplated/Activation.cpp
@@ -20,6 +21,7 @@ set(tests_src
 add_executable(unit_tests ${tests_src})
 
 target_link_libraries(unit_tests PRIVATE
+  CWindow::CWindow
   NeuralNetwork::NeuralNetwork
   GTest::gtest
   GTest::gtest_main

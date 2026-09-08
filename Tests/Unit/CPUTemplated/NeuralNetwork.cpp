@@ -337,8 +337,8 @@ TEST(NeuralNetworkForward, ForwardsThroughMultipleLayers){
 
   network.forward();
 
-  EXPECT_NEAR(std::get<1>(network.layers)[0], 4.0, 1e-6);
-  EXPECT_NEAR(std::get<1>(network.layers)[1], 4.0, 1e-6);
+  EXPECT_NEAR(std::get<1>(network.layers).getNodes()[0], 4.0, 1e-6);
+  EXPECT_NEAR(std::get<1>(network.layers).getNodes()[1], 4.0, 1e-6);
 
   EXPECT_NEAR(network.getResult()[0], 13.0, 1e-6);
   EXPECT_NEAR(network.getResult()[1], 18.0, 1e-6);
@@ -440,6 +440,7 @@ TEST(NeuralNetworkBackpropInitial, CalculatesZeroSigmaForCorrectResult){
 TEST(NeuralNetworkBackpropImpl, CalculatesSigmaAndUpdatesWeights){
   NN::NeuralNetwork<1, 1, 1> network;
 
+  network.setGPUAcceleration(false);
   network.setLearningRate(0.1);
 
   std::get<0>(network.layers).setNodes({2.0});
