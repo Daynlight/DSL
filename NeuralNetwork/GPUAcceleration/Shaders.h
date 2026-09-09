@@ -10,8 +10,6 @@
 
 
 
-
-
 // ====================== //
 // ======= Forward ====== //
 // ====================== //
@@ -50,17 +48,19 @@ void main(){
   if(i >= D) return;
 
   uint row = i * (S + 1u);
-  float sum = 0.0;
+  precise float sum = 0.0;
 
-  for(uint j = lane; j < S; j += 256u)
-    sum += activated[j] * weights[row + j];
+  for(uint j = lane; j < S; j += 256u){
+    precise float product = activated[j] * weights[row + j];
+    sum = sum + product;
+  }
 
   partial[lane] = sum;
   barrier();
 
   for(uint stride = 128u; stride > 0u; stride >>= 1u){
     if(lane < stride)
-      partial[lane] += partial[lane + stride];
+      partial[lane] = partial[lane] + partial[lane + stride];
 
     barrier();
   }
@@ -70,7 +70,6 @@ void main(){
 }
 
 )";
-
 
 
 
@@ -127,11 +126,13 @@ void main(){
   uint i = gl_WorkGroupID.x * 32u + lane_x;
   uint row_size = S + 1u;
 
-  float value = 0.0;
+  precise float value = 0.0;
 
   if(i < S){
-    for(uint j = lane_y; j < D; j += 8u)
-      value += weights[j * row_size + i] * next_sigma[j];
+    for(uint j = lane_y; j < D; j += 8u){
+      precise float product = weights[j * row_size + i] * next_sigma[j];
+      value = value + product;
+    }
   }
 
   partial[lane_y][lane_x] = value;
@@ -139,7 +140,7 @@ void main(){
 
   for(uint stride = 4u; stride > 0u; stride >>= 1u){
     if(lane_y < stride)
-      partial[lane_y][lane_x] += partial[lane_y + stride][lane_x];
+      partial[lane_y][lane_x] = partial[lane_y][lane_x] + partial[lane_y + stride][lane_x];
 
     barrier();
   }
@@ -149,8 +150,12 @@ void main(){
     gradient[i] = value;
 
     if(activation_id == 1u) sigma[i] = value;
-    else if(activation_id == 2u) sigma[i] = value * activated[i] * (1.0 - activated[i]);
-    else if(activation_id == 4u) sigma[i] = value * (nodes[i] > 0.0 ? 1.0 : 0.0);
+    else if(activation_id == 2u){
+      float a = activated[i];
+      sigma[i] = value * a * (1.0 - a);
+    }
+    else if(activation_id == 4u)
+      sigma[i] = nodes[i] > 0.0 ? value : 0.0;
   }
 }
 
@@ -158,9 +163,12 @@ void main(){
 
 
 
+
+
 // ====================== //
 // === Softmax Sigma ==== //
 // ====================== //
+
 inline const std::string backprop_SoftmaxSigma_shader_src = R"(
 
 #version 430 core
@@ -189,16 +197,20 @@ void main(){
   uint lane = gl_LocalInvocationID.x;
   uint S = uint(meta[0]);
 
-  float dot = 0.0;
+  precise float dot = 0.0;
 
-  for(uint i = lane; i < S; i += 256u)
-    dot += activated[i] * gradient[i];
+  for(uint i = lane; i < S; i += 256u){
+    precise float product = activated[i] * gradient[i];
+    dot = dot + product;
+  }
 
   partial[lane] = dot;
   barrier();
 
   for(uint stride = 128u; stride > 0u; stride >>= 1u){
-    if(lane < stride) partial[lane] += partial[lane + stride];
+    if(lane < stride)
+      partial[lane] = partial[lane] + partial[lane + stride];
+
     barrier();
   }
 
@@ -209,6 +221,8 @@ void main(){
 }
 
 )";
+
+
 
 
 
@@ -248,14 +262,17 @@ void main(){
   if(row >= D || col > S) return;
 
   uint index = row * (S + 1u) + col;
-  float factor = meta[4] * next_sigma[row];
 
+  precise float factor = meta[4] * next_sigma[row];
   float input_value = col == S ? 1.0 : activated[col];
+  precise float delta = factor * input_value;
 
-  weights[index] -= factor * input_value;
+  weights[index] = weights[index] - delta;
 }
 
 )";
+
+
 
 
 
@@ -269,8 +286,12 @@ inline const std::string backprop_SoftmaxCrossEntropy_shader_src = R"(
 
 layout(local_size_x = 256) in;
 
-layout(std430, binding = 3) readonly buffer Activated {
-  float activated[];
+layout(std430, binding = 0) readonly buffer Header {
+  float meta[];
+};
+
+layout(std430, binding = 2) readonly buffer Nodes {
+  float nodes[];
 };
 
 layout(std430, binding = 4) writeonly buffer Sigma {
@@ -281,16 +302,62 @@ layout(std430, binding = 6) readonly buffer Target {
   float target[];
 };
 
-void main(){
-  uint i = gl_GlobalInvocationID.x;
-  if(i >= sigma.length()) return;
+shared float partial_max[256];
+shared float partial_sum[256];
 
-  sigma[i] = activated[i] - target[i];
+void main(){
+  uint lane = gl_LocalInvocationID.x;
+  uint S = uint(meta[0]);
+
+  float maximum = -3.402823466e+38;
+
+  for(uint i = lane; i < S; i += 256u)
+    maximum = max(maximum, nodes[i]);
+
+  partial_max[lane] = maximum;
+  barrier();
+
+  for(uint stride = 128u; stride > 0u; stride >>= 1u){
+    if(lane < stride)
+      partial_max[lane] = max(partial_max[lane], partial_max[lane + stride]);
+
+    barrier();
+  }
+
+  maximum = partial_max[0];
+
+  precise float sum = 0.0;
+
+  for(uint i = lane; i < S; i += 256u)
+    sum = sum + exp(nodes[i] - maximum);
+
+  partial_sum[lane] = sum;
+  barrier();
+
+  for(uint stride = 128u; stride > 0u; stride >>= 1u){
+    if(lane < stride)
+      partial_sum[lane] = partial_sum[lane] + partial_sum[lane + stride];
+
+    barrier();
+  }
+
+  sum = partial_sum[0];
+
+  for(uint i = lane; i < S; i += 256u){
+    float probability = exp(nodes[i] - maximum) / sum;
+    sigma[i] = probability - target[i];
+  }
 }
 
 )";
 
 
+
+
+
+// ====================== //
+// === Initial Sigma ==== //
+// ====================== //
 
 inline const std::string backprop_Initial_shader_src = R"(
 
@@ -319,6 +386,8 @@ layout(std430, binding = 6) readonly buffer Target {
 };
 
 shared float partial[256];
+shared float partial_max[256];
+shared float partial_sum[256];
 
 float loss_gradient(uint i, uint loss_id){
   float p = activated[i];
@@ -332,22 +401,69 @@ float loss_gradient(uint i, uint loss_id){
 
 void main(){
   uint i = gl_GlobalInvocationID.x;
+  uint lane = gl_LocalInvocationID.x;
   uint S = uint(meta[0]);
   uint activation_id = uint(meta[2]);
   uint loss_id = uint(meta[3]);
 
-  if(activation_id == 3u){
-    uint lane = gl_LocalInvocationID.x;
-    float dot = 0.0;
+  if(activation_id == 3u && loss_id == 2u){
+    float maximum = -3.402823466e+38;
 
     for(uint j = lane; j < S; j += 256u)
-      dot += activated[j] * loss_gradient(j, loss_id);
+      maximum = max(maximum, nodes[j]);
+
+    partial_max[lane] = maximum;
+    barrier();
+
+    for(uint stride = 128u; stride > 0u; stride >>= 1u){
+      if(lane < stride)
+        partial_max[lane] = max(partial_max[lane], partial_max[lane + stride]);
+
+      barrier();
+    }
+
+    maximum = partial_max[0];
+
+    precise float sum = 0.0;
+
+    for(uint j = lane; j < S; j += 256u)
+      sum = sum + exp(nodes[j] - maximum);
+
+    partial_sum[lane] = sum;
+    barrier();
+
+    for(uint stride = 128u; stride > 0u; stride >>= 1u){
+      if(lane < stride)
+        partial_sum[lane] = partial_sum[lane] + partial_sum[lane + stride];
+
+      barrier();
+    }
+
+    sum = partial_sum[0];
+
+    for(uint j = lane; j < S; j += 256u){
+      float probability = exp(nodes[j] - maximum) / sum;
+      sigma[j] = probability - target[j];
+    }
+
+    return;
+  }
+
+  if(activation_id == 3u){
+    precise float dot = 0.0;
+
+    for(uint j = lane; j < S; j += 256u){
+      precise float product = activated[j] * loss_gradient(j, loss_id);
+      dot = dot + product;
+    }
 
     partial[lane] = dot;
     barrier();
 
     for(uint stride = 128u; stride > 0u; stride >>= 1u){
-      if(lane < stride) partial[lane] += partial[lane + stride];
+      if(lane < stride)
+        partial[lane] = partial[lane] + partial[lane + stride];
+
       barrier();
     }
 
@@ -364,8 +480,12 @@ void main(){
   float gradient = loss_gradient(i, loss_id);
 
   if(activation_id == 1u) sigma[i] = gradient;
-  else if(activation_id == 2u) sigma[i] = gradient * activated[i] * (1.0 - activated[i]);
-  else if(activation_id == 4u) sigma[i] = gradient * (nodes[i] > 0.0 ? 1.0 : 0.0);
+  else if(activation_id == 2u){
+    float a = activated[i];
+    sigma[i] = gradient * a * (1.0 - a);
+  }
+  else if(activation_id == 4u)
+    sigma[i] = nodes[i] > 0.0 ? gradient : 0.0;
 }
 
 )";

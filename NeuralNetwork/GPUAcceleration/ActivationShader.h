@@ -31,6 +31,7 @@ layout(std430, binding = 3) writeonly buffer Activated {
 void main(){
   uint i = gl_GlobalInvocationID.x;
   if(i >= activated.length()) return;
+
   activated[i] = nodes[i];
 }
 
@@ -49,6 +50,7 @@ layout(std430, binding = 5) writeonly buffer Gradient {
 void main(){
   uint i = gl_GlobalInvocationID.x;
   if(i >= gradient.length()) return;
+
   gradient[i] = 1.0;
 }
 
@@ -56,10 +58,14 @@ void main(){
 
 
 
+
+
 // ====================== //
 // ======= Sigmoid ====== //
 // ====================== //
+
 inline const std::string activate_Sigmoid_shader_src = R"(
+
 #version 430 core
 
 layout(local_size_x = 256) in;
@@ -79,16 +85,19 @@ void main(){
   float x = nodes[i];
 
   if(x >= 0.0){
-    activated[i] = 1.0 / (1.0 + exp(-x));
+    precise float z = exp(-x);
+    activated[i] = 1.0 / (1.0 + z);
   }
   else{
-    float z = exp(x);
+    precise float z = exp(x);
     activated[i] = z / (1.0 + z);
   }
 }
+
 )";
 
 inline const std::string activate_SigmoidPrime_shader_src = R"(
+
 #version 430 core
 
 layout(local_size_x = 256) in;
@@ -103,19 +112,26 @@ layout(std430, binding = 5) writeonly buffer Gradient {
 
 void main(){
   uint i = gl_GlobalInvocationID.x;
-  if(i >= activated.length()) return;
+  if(i >= gradient.length()) return;
 
   float y = activated[i];
-  gradient[i] = y * (1.0 - y);
+  precise float derivative = y * (1.0 - y);
+
+  gradient[i] = derivative;
 }
+
 )";
+
+
 
 
 
 // ====================== //
 // ======== ReLU ======== //
 // ====================== //
+
 inline const std::string activate_ReLU_shader_src = R"(
+
 #version 430 core
 
 layout(local_size_x = 256) in;
@@ -131,11 +147,14 @@ layout(std430, binding = 3) writeonly buffer Activated {
 void main(){
   uint i = gl_GlobalInvocationID.x;
   if(i >= activated.length()) return;
+
   activated[i] = max(nodes[i], 0.0);
 }
+
 )";
 
 inline const std::string activate_ReLUPrime_shader_src = R"(
+
 #version 430 core
 
 layout(local_size_x = 256) in;
@@ -151,16 +170,22 @@ layout(std430, binding = 5) writeonly buffer Gradient {
 void main(){
   uint i = gl_GlobalInvocationID.x;
   if(i >= gradient.length()) return;
+
   gradient[i] = nodes[i] > 0.0 ? 1.0 : 0.0;
 }
+
 )";
+
+
 
 
 
 // ====================== //
 // ======= Softmax ====== //
 // ====================== //
+
 inline const std::string activate_Softmax_shader_src = R"(
+
 #version 430 core
 
 layout(local_size_x = 256) in;
@@ -173,7 +198,7 @@ layout(std430, binding = 3) writeonly buffer Activated {
   float activated[];
 };
 
-shared float partial[256];
+shared precise float partial[256];
 
 void main(){
   uint lane = gl_LocalInvocationID.x;
@@ -181,7 +206,7 @@ void main(){
 
   if(size == 0u) return;
 
-  float localMax = -3.402823466e38;
+  float localMax = -3.402823466e+38;
 
   for(uint i = lane; i < size; i += 256u)
     localMax = max(localMax, nodes[i]);
@@ -190,29 +215,38 @@ void main(){
   barrier();
 
   for(uint stride = 128u; stride > 0u; stride >>= 1u){
-    if(lane < stride) partial[lane] = max(partial[lane], partial[lane + stride]);
+    if(lane < stride)
+      partial[lane] = max(partial[lane], partial[lane + stride]);
+
     barrier();
   }
 
   float maxValue = partial[0];
-  float localSum = 0.0;
+  precise float localSum = 0.0;
 
-  for(uint i = lane; i < size; i += 256u)
-    localSum += exp(nodes[i] - maxValue);
+  for(uint i = lane; i < size; i += 256u){
+    precise float value = exp(nodes[i] - maxValue);
+    localSum = localSum + value;
+  }
 
   partial[lane] = localSum;
   barrier();
 
   for(uint stride = 128u; stride > 0u; stride >>= 1u){
-    if(lane < stride) partial[lane] += partial[lane + stride];
+    if(lane < stride)
+      partial[lane] = partial[lane] + partial[lane + stride];
+
     barrier();
   }
 
-  float sum = partial[0];
+  precise float sum = partial[0];
 
-  for(uint i = lane; i < size; i += 256u)
-    activated[i] = exp(nodes[i] - maxValue) / sum;
+  for(uint i = lane; i < size; i += 256u){
+    precise float value = exp(nodes[i] - maxValue);
+    activated[i] = value / sum;
+  }
 }
+
 )";
 
 inline const std::string activate_SoftmaxPrime_shader_src = R"(
@@ -233,7 +267,7 @@ layout(std430, binding = 4) writeonly buffer Sigma {
   float sigma[];
 };
 
-shared float partial[256];
+shared precise float partial[256];
 
 void main(){
   uint lane = gl_LocalInvocationID.x;
@@ -241,23 +275,29 @@ void main(){
 
   if(size == 0u) return;
 
-  float dot = 0.0;
+  precise float dot = 0.0;
 
-  for(uint i = lane; i < size; i += 256u)
-    dot += activated[i] * gradient[i];
+  for(uint i = lane; i < size; i += 256u){
+    precise float product = activated[i] * gradient[i];
+    dot = dot + product;
+  }
 
   partial[lane] = dot;
   barrier();
 
   for(uint stride = 128u; stride > 0u; stride >>= 1u){
-    if(lane < stride) partial[lane] += partial[lane + stride];
+    if(lane < stride)
+      partial[lane] = partial[lane] + partial[lane + stride];
+
     barrier();
   }
 
   dot = partial[0];
 
-  for(uint i = lane; i < size; i += 256u)
-    sigma[i] = activated[i] * (gradient[i] - dot);
+  for(uint i = lane; i < size; i += 256u){
+    precise float difference = gradient[i] - dot;
+    sigma[i] = activated[i] * difference;
+  }
 }
-)";
 
+)";

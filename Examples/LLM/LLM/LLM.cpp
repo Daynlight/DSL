@@ -118,12 +118,14 @@ std::filesystem::path LLM::LLM::getModelFilePath() const noexcept {
 // =========================== //
 void LLM::LLM::loadModelFromFile() noexcept {
   if(!std::filesystem::exists(path_to_model_data) || std::filesystem::is_directory(path_to_model_data)){
-    model.setWeights<0>(-0.00968, 0.00968);
-    model.setWeights<1>(-0.02706, 0.02706);
-    model.setWeights<2>(-0.02706, 0.02706);
-    model.setWeights<3>(-0.06275, 0.06275);
-    model.setWeights<4>(-0.06275, 0.06275);
-    model.setWeights<5>(-0.03827, 0.03827);
+    // model.setWeights<0>(-0.00968, 0.00968);
+    // model.setWeights<1>(-0.02706, 0.02706);
+    // model.setWeights<2>(-0.02706, 0.02706);
+    // model.setWeights<3>(-0.06275, 0.06275);
+    // model.setWeights<4>(-0.06275, 0.06275);
+    // model.setWeights<5>(-0.03827, 0.03827);
+    // model.setWeights<6>(-0.02706, 0.02706);
+    // model.setWeights<7>(-0.06275, 0.06275);
     return;
   };
 
@@ -242,8 +244,10 @@ void LLM::LLM::setModel() noexcept {
   model.setActivation<2, NN::ReLU>();
   model.setActivation<3, NN::ReLU>();
   model.setActivation<4, NN::ReLU>();
-  model.setActivation<5, NN::Softmax>();
-  model.setLoss<5, NN::CrossEntropy>();
+  model.setActivation<5, NN::ReLU>();
+  model.setActivation<6, NN::ReLU>();
+  model.setActivation<7, NN::Softmax>();
+  model.setLoss<7, NN::CrossEntropy>();
   // model.setGPUAcceleration(false);
 };
 
@@ -290,21 +294,21 @@ void LLM::LLM::learningInfo(bool show_learning_ifno, const std::array<float, voc
 
 
 void LLM::LLM::createTokens(const std::string& text) noexcept {
-  tokens.clear();
-  token_to_id.clear();
-
-  tokens.emplace_back("<UNK>");
-  tokens.emplace_back("<PAD>");
-
-  token_to_id.emplace("<UNK>", unk_token);
-  token_to_id.emplace("<PAD>", pad_token);
+  if(tokens.empty()){
+    tokens.emplace_back("<UNK>");
+    tokens.emplace_back("<PAD>");
+    token_to_id.emplace("<UNK>", unk_token);
+    token_to_id.emplace("<PAD>", pad_token);
+  }
 
   std::unordered_map<std::string, size_t> frequency;
-
   std::istringstream stream(text);
   std::string word;
 
-  while(stream >> word) frequency[word]++;
+  while(stream >> word){
+    if(token_to_id.contains(word)) continue;
+    frequency[word]++;
+  }
 
   std::vector<std::pair<std::string, size_t>> sorted;
   sorted.reserve(frequency.size());
@@ -315,20 +319,27 @@ void LLM::LLM::createTokens(const std::string& text) noexcept {
     return a.first < b.first;
   });
 
-  for(const auto& [word, count] : sorted){
-    if(tokens.size() >= vocab_size) break;
-    if(word == "<UNK>" || word == "<PAD>") continue;
+  size_t next = 0;
 
-    size_t id = tokens.size();
-    token_to_id.emplace(word, id);
-    tokens.push_back(word);
-  };
+  for(const auto& [word, count] : sorted){
+    while(next < tokens.size() && tokens[next].rfind("<UNUSED_", 0) != 0) next++;
+    if(next >= vocab_size) break;
+
+    if(next < tokens.size()){
+      token_to_id.erase(tokens[next]);
+      tokens[next] = word;
+    }
+    else tokens.push_back(word);
+
+    token_to_id.emplace(word, next);
+    next++;
+  }
 
   while(tokens.size() < vocab_size){
     std::string token = "<UNUSED_" + std::to_string(tokens.size()) + ">";
     token_to_id.emplace(token, tokens.size());
     tokens.push_back(std::move(token));
-  };
+  }
 };
 
 
@@ -442,10 +453,20 @@ void LLM::LLM::learn() noexcept {
   fmt::println(fg(fmt::color::yellow), "-- Prepering Data");
   std::string text_io = readLearningSet();
   std::string text = prepareLearningSet(text_io);
+  if(context_size == 0 || text.empty()) return;
+
+  if(!loadTokensFromFile() && std::filesystem::exists(path_to_model_data)){
+    fmt::println(fg(fmt::color::red), "Vocabulary missing or invalid for existing model");
+    return;
+  };
+
+  createTokens(text);
+  saveTokensToFile();
+
   std::vector<size_t> encoded_text = encodeTokens(text);
   if(encoded_text.size() <= context_size) return;
   if(tokens.size() != vocab_size) return;
-  if(context_size == 0) return;
+  
 
   fmt::println(fg(fmt::color::yellow), "-- Learning");
   fmt::println(fg(fmt::color::white), "enter to abort without lossing");
@@ -603,6 +624,11 @@ void LLM::LLM::learn() noexcept {
 std::string LLM::LLM::getRespond(const std::string &message) noexcept {
   if(tokens.size() != vocab_size) return "";
 
+  if(!loadTokensFromFile() && std::filesystem::exists(path_to_model_data)){
+    fmt::println(fg(fmt::color::red), "Vocabulary missing or invalid for existing model");
+    return "";
+  };
+
   std::vector<size_t> context = encodeTokens(message);
   std::vector<size_t> response;
   response.reserve(response_size);
@@ -664,17 +690,14 @@ void LLM::LLM::onStart() noexcept {
       is_running = false;
       return;
     };
+  };
 
-    std::string text = prepareLearningSet(readLearningSet());
+  std::string text = prepareLearningSet(readLearningSet());
 
-    if(text.empty()){
-      fmt::println(fg(fmt::color::red), "Learning set is empty");
-      is_running = false;
-      return;
-    };
-
-    createTokens(text);
-    saveTokensToFile();
+  if(text.empty()){
+    fmt::println(fg(fmt::color::red), "Learning set is empty");
+    is_running = false;
+    return;
   };
 
   loadModelFromFile();

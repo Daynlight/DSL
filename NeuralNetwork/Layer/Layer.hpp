@@ -17,7 +17,8 @@ template <unsigned int S, unsigned int D>
 inline NN::Layer<S, D>::Layer() noexcept {
   NN::GPUAcceleration::get();
   nodes[S] = 1.0f;
-  setWeights(-1.0f, 1.0f);
+  const float limit = std::sqrt(6.0f / static_cast<float>(S + D));
+  setWeights(-limit, limit);
   loss = std::make_unique<NN::MSE>();
   activation = std::make_unique<NN::Linear>();
 };
@@ -613,7 +614,29 @@ inline void NN::Layer<S, D>::setLoss() noexcept {
 
 template <unsigned int S, unsigned int D>
 inline float &NN::Layer<S, D>::operator[](unsigned int i) {
+  glFinish();
   if(i > S) throw std::range_error("index out of range");
+
+  if(cpu_nodes_dirty){
+    std::vector<float> data;
+    if(debug_logs){
+      glFinish();
+    };
+    auto start = std::chrono::steady_clock::now();
+    gpu_storage[GPUNodes].get(data);
+    std::memcpy(nodes, data.data(), sizeof(nodes));
+    if(debug_logs){
+      glFinish();
+      auto end = std::chrono::steady_clock::now();
+      printf("operator GPUNodes Get: %zu bytes, %.3f ms\n", sizeof(nodes), std::chrono::duration<double, std::milli>(end - start).count());
+    };
+    cpu_nodes_dirty = false;
+  };
+
+  gpu_nodes_dirty = true;
+  activated_after_forward = false;
+  
+  glFinish();
   return nodes[i];
 };
 
@@ -800,6 +823,7 @@ template <unsigned int N>
 inline void NN::Layer<S, D>::forward(NN::Layer<D, N>& layer) {
   glFinish();
   nodes[S] = 1.0;
+
   activated_after_forward = false;
   activateNodes();
 
@@ -998,7 +1022,9 @@ inline void NN::Layer<S, D>::backprop_initial_gpu(std::span<const float> target)
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::backprop_initial(std::span<const float> target) noexcept {
   glFinish();
+  
   activateNodes();
+  
   if(dynamic_cast<NN::Softmax*>(activation.get()) && dynamic_cast<NN::CrossEntropy*>(loss.get())){
     backprop_initial_softmax_cross_entropy_fuse(target);
     return;
@@ -1101,6 +1127,7 @@ inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse_threads
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse_gpu(std::span<const float> target) noexcept {
   glFinish();
+  activateNodes();
   ensure_gpu_storage();
 
   const size_t size = std::min<size_t>(S, target.size());
@@ -1143,7 +1170,9 @@ inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse_gpu(std
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse(std::span<const float> target) noexcept {
   glFinish();
+  
   activateNodes();
+
   if(!gpu_acceleration){
     if(size_t(S) > multithreading_acceleration_size_threshold) backprop_initial_softmax_cross_entropy_fuse_threads(target);
     else backprop_initial_softmax_cross_entropy_fuse_cpu(target);
