@@ -20,16 +20,16 @@ int main(){
   fmt::println(fg(fmt::color::dark_golden_rod) , "============================================");
   fmt::println("");
 
-  // ExamplesTemplatedCPU::Operations::BaseOperations();
-  // ExamplesTemplatedCPU::Operations::Serialization();
+  ExamplesTemplatedCPU::Operations::BaseOperations();
+  ExamplesTemplatedCPU::Operations::Serialization();
   ExamplesTemplatedCPU::Operations::SerializationNetwork();
-  // ExamplesTemplatedCPU::Operations::Forward();
-  // ExamplesTemplatedCPU::Operations::Backprop();
-  // ExamplesTemplatedCPU::Learn::Minus();
-  // ExamplesTemplatedCPU::Learn::XOR();
-  // ExamplesTemplatedCPU::Learn::Func();
+  ExamplesTemplatedCPU::Operations::Forward();
+  ExamplesTemplatedCPU::Operations::Backprop();
+  ExamplesTemplatedCPU::Learn::Minus();
+  ExamplesTemplatedCPU::Learn::XOR();
+  ExamplesTemplatedCPU::Learn::Func();
   
-  // ExamplesTemplatedCPU::App::Minus();
+  ExamplesTemplatedCPU::App::Minus();
 
   return 0;
 };

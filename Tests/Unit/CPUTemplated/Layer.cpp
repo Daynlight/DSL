@@ -11,8 +11,11 @@
 #include <string>
 #include <array>
 #include <algorithm>
-#include <cmath>
 #include <type_traits>
+#include <vector>
+#include <span>
+#include <limits>
+#include <cstddef>
 
 #include "NeuralNetwork/Layer/Layer.h"
 
@@ -706,6 +709,283 @@ TEST(LayerDeserialize, ThrowsOnTruncatedData){
 // =============================
 // ======= Mathematics =========
 // =============================
+namespace {
+enum class LayerBackend { CPU, Threads, GPU };
+const char* backendName(LayerBackend backend){
+  if(backend == LayerBackend::CPU) return "CPU";
+  if(backend == LayerBackend::Threads) return "Threads";
+  return "GPU";
+};
+
+template<typename Activation>
+std::vector<double> referenceActivation(std::span<const double> nodes){
+  std::vector<double> output(nodes.size());
+  if constexpr(std::is_same_v<Activation, NN::Softmax>){
+    const double maximum = *std::max_element(nodes.begin(), nodes.end());
+    double sum = 0.0;
+    for(size_t i = 0; i < nodes.size(); i++){
+      output[i] = std::exp(nodes[i] - maximum);
+      sum += output[i];
+    };
+    for(double& value : output) value /= sum;
+  }
+  else{
+    for(size_t i = 0; i < nodes.size(); i++){
+      if constexpr(std::is_same_v<Activation, NN::Linear>) output[i] = nodes[i];
+      else if constexpr(std::is_same_v<Activation, NN::Sigmoid>) output[i] = 1.0 / (1.0 + std::exp(-nodes[i]));
+      else if constexpr(std::is_same_v<Activation, NN::ReLU>) output[i] = std::max(0.0, nodes[i]);
+    };
+  };
+  return output;
+};
+
+template<typename Activation>
+std::vector<double> referenceSigma(std::span<const double> nodes, std::span<const double> gradient){
+  const auto activated = referenceActivation<Activation>(nodes);
+  std::vector<double> sigma(nodes.size());
+  if constexpr(std::is_same_v<Activation, NN::Softmax>){
+    double dot = 0.0;
+    for(size_t i = 0; i < nodes.size(); i++) dot += activated[i] * gradient[i];
+    for(size_t i = 0; i < nodes.size(); i++) sigma[i] = activated[i] * (gradient[i] - dot);
+  }
+  else{
+    for(size_t i = 0; i < nodes.size(); i++){
+      if constexpr(std::is_same_v<Activation, NN::Linear>) sigma[i] = gradient[i];
+      else if constexpr(std::is_same_v<Activation, NN::Sigmoid>) sigma[i] = gradient[i] * activated[i] * (1.0 - activated[i]);
+      else if constexpr(std::is_same_v<Activation, NN::ReLU>) sigma[i] = nodes[i] > 0.0 ? gradient[i] : 0.0;
+    };
+  };
+  return sigma;
+};
+
+template<typename Activation, typename Loss>
+std::vector<double> referenceOutputSigma(std::span<const double> nodes, std::span<const double> target){
+  const auto activated = referenceActivation<Activation>(nodes);
+  std::vector<double> gradient(nodes.size());
+  if constexpr(std::is_same_v<Activation, NN::Softmax> && std::is_same_v<Loss, NN::CrossEntropy>){
+    for(size_t i = 0; i < nodes.size(); i++) gradient[i] = activated[i] - target[i];
+    return gradient;
+  }
+  else{
+    for(size_t i = 0; i < nodes.size(); i++){
+      if constexpr(std::is_same_v<Loss, NN::MSE>) gradient[i] = activated[i] - target[i];
+      else gradient[i] = target[i] == 0.0 ? 0.0 : -target[i] / std::max(activated[i], 1e-7);
+    };
+    return referenceSigma<Activation>(nodes, gradient);
+  };
+};
+
+template<typename Activation, typename Loss>
+double referenceLoss(std::span<const double> nodes, std::span<const double> target){
+  const auto output = referenceActivation<Activation>(nodes);
+  double value = 0.0;
+  for(size_t i = 0; i < nodes.size(); i++){
+    if constexpr(std::is_same_v<Loss, NN::MSE>){
+      const double difference = output[i] - target[i];
+      value += difference * difference / 2.0;
+    }
+    else if(target[i] != 0.0) value -= target[i] * std::log(std::max(output[i], 1e-7));
+  };
+  return value;
+};
+
+template<unsigned int S, unsigned int D>
+std::vector<double> referenceForward(std::span<const double> input, std::span<const double> weights){
+  std::vector<double> output(D);
+  for(size_t j = 0; j < D; j++){
+    double sum = weights[j * (S + 1) + S];
+    for(size_t i = 0; i < S; i++) sum += input[i] * weights[j * (S + 1) + i];
+    output[j] = sum;
+  };
+  return output;
+};
+
+template<unsigned int S, unsigned int D>
+std::vector<double> referenceHiddenGradient(std::span<const double> weights, std::span<const double> next_sigma){
+  std::vector<double> gradient(S, 0.0);
+  for(size_t j = 0; j < D; j++)
+    for(size_t i = 0; i < S; i++) gradient[i] += weights[j * (S + 1) + i] * next_sigma[j];
+  return gradient;
+};
+
+template<unsigned int S, unsigned int D>
+std::vector<double> referenceUpdate(std::span<const double> weights, std::span<const double> activated, std::span<const double> next_sigma, double rate){
+  std::vector<double> updated(weights.begin(), weights.end());
+  for(size_t j = 0; j < D; j++){
+    for(size_t i = 0; i < S; i++) updated[j * (S + 1) + i] -= rate * next_sigma[j] * activated[i];
+    updated[j * (S + 1) + S] -= rate * next_sigma[j];
+  };
+  return updated;
+};
+
+template<size_t S>
+std::array<float, S> referenceInput(){
+  std::array<float, S> input{};
+  for(size_t i = 0; i < S; i++) input[i] = 0.125f * (int(i % 7) - 3) + 0.03125f;
+  return input;
+};
+
+template<size_t S, size_t D>
+std::array<float, (S + 1) * D> referenceWeights(){
+  std::array<float, (S + 1) * D> weights{};
+  for(size_t j = 0; j < D; j++){
+    for(size_t i = 0; i < S; i++) weights[j * (S + 1) + i] = 0.0125f * (int((i * 3 + j * 5) % 11) - 5);
+    weights[j * (S + 1) + S] = 0.02f * (int(j % 5) - 2);
+  };
+  return weights;
+};
+
+template<size_t S>
+std::vector<double> asDouble(const std::array<float, S>& values){
+  return std::vector<double>(values.begin(), values.end());
+};
+
+std::vector<float> asFloat(std::span<const double> values){
+  return std::vector<float>(values.begin(), values.end());
+};
+
+void expectReference(std::span<const float> actual, std::span<const double> expected, double tolerance){
+  ASSERT_EQ(actual.size(), expected.size());
+  for(size_t i = 0; i < expected.size(); i++){
+    SCOPED_TRACE(i);
+    ASSERT_TRUE(std::isfinite(actual[i]));
+    ASSERT_TRUE(std::isfinite(expected[i]));
+    EXPECT_NEAR(actual[i], expected[i], tolerance);
+  };
+};
+
+template<unsigned int S, unsigned int D, typename Activation, typename OutputActivation, typename Loss>
+void checkReferenceStep(LayerBackend backend, float rate = 0.01f){
+  SCOPED_TRACE(backendName(backend));
+  NN::Layer<S, D> layer;
+  NN::Layer<D, 1> next;
+  layer.setGpuAcceleration(backend == LayerBackend::GPU);
+  next.setGpuAcceleration(backend == LayerBackend::GPU);
+  layer.template setActivation<Activation>();
+  next.template setActivation<OutputActivation>();
+  next.template setLoss<Loss>();
+  layer.setLearningRate(rate);
+  const auto input = referenceInput<S>();
+  const auto weights = referenceWeights<S, D>();
+  std::array<float, D> target{};
+  target[D / 2] = 1.0f;
+  layer.setNodes(input);
+  layer.setWeights(weights.data());
+  const auto input_d = asDouble(input);
+  const auto weights_d = asDouble(weights);
+  const auto target_d = asDouble(target);
+  const auto activated = referenceActivation<Activation>(input_d);
+  const auto logits = referenceForward<S, D>(activated, weights_d);
+  const auto output = referenceActivation<OutputActivation>(logits);
+  const auto output_sigma = referenceOutputSigma<OutputActivation, Loss>(logits, target_d);
+  const auto gradient = referenceHiddenGradient<S, D>(weights_d, output_sigma);
+  const auto hidden_sigma = referenceSigma<Activation>(input_d, gradient);
+  const auto updated = referenceUpdate<S, D>(weights_d, activated, output_sigma, rate);
+  layer.forward(next);
+  expectReference(std::span<const float>(next.getNodes(), D), logits, 2e-4);
+  expectReference(std::span<const float>(next.getActivatedNodes(), D), output, 2e-4);
+  next.backprop_initial(target);
+  expectReference(std::span<const float>(next.getSigma(), D), output_sigma, 2e-4);
+  layer.backprop(next);
+  expectReference(std::span<const float>(layer.getSigma(), S), hidden_sigma, 3e-4);
+  expectReference(std::span<const float>(layer.getWeights(), weights.size()), updated, 3e-4);
+  layer.setNodes(input);
+  layer.forward(next);
+  const auto next_logits = referenceForward<S, D>(activated, updated);
+  expectReference(std::span<const float>(next.getNodes(), D), next_logits, 2e-4);
+};
+
+template<unsigned int S, unsigned int D, typename Activation, typename OutputActivation, typename Loss>
+void checkNumericalGradients(LayerBackend backend){
+  SCOPED_TRACE(backendName(backend));
+  NN::Layer<S, D> layer;
+  NN::Layer<D, 1> next;
+  layer.setGpuAcceleration(backend == LayerBackend::GPU);
+  next.setGpuAcceleration(backend == LayerBackend::GPU);
+  layer.template setActivation<Activation>();
+  next.template setActivation<OutputActivation>();
+  next.template setLoss<Loss>();
+  layer.setLearningRate(0.0f);
+  const auto input = referenceInput<S>();
+  const auto weights = referenceWeights<S, D>();
+  std::array<float, D> target{};
+  target[D / 2] = 1.0f;
+  const auto target_d = asDouble(target);
+  auto error = [&](){
+    std::vector<double> logits(D);
+    const float* nodes = next.getNodes();
+    for(size_t i = 0; i < D; i++) logits[i] = nodes[i];
+    return referenceLoss<OutputActivation, Loss>(logits, target_d);
+  };
+  layer.setNodes(input);
+  layer.setWeights(weights.data());
+  layer.forward(next);
+  next.backprop_initial(target);
+  std::array<float, D> output_sigma{};
+  std::copy_n(next.getSigma(), D, output_sigma.begin());
+  layer.backprop(next);
+  std::array<float, S> hidden_sigma{};
+  std::copy_n(layer.getSigma(), S, hidden_sigma.begin());
+  const auto activated = referenceActivation<Activation>(asDouble(input));
+  constexpr float epsilon = 0.001f;
+  constexpr double tolerance = 0.003;
+  std::array<float, D> original_logits{};
+  std::copy_n(next.getNodes(), D, original_logits.begin());
+  for(size_t i = 0; i < D; i += std::max<size_t>(1, D / 4)){
+    auto plus = original_logits;
+    auto minus = original_logits;
+    plus[i] += epsilon;
+    minus[i] -= epsilon;
+    next.setNodes(plus);
+    const double positive = error();
+    next.setNodes(minus);
+    const double negative = error();
+    const double numerical = (positive - negative) / (2.0 * epsilon);
+    SCOPED_TRACE(i);
+    ASSERT_TRUE(std::isfinite(numerical));
+    EXPECT_NEAR(output_sigma[i], numerical, tolerance);
+  };
+  next.setNodes(original_logits);
+  const size_t input_checks = std::min<size_t>(S, 4);
+  for(size_t i = 0; i < input_checks; i++){
+    auto plus = input;
+    auto minus = input;
+    plus[i] += epsilon;
+    minus[i] -= epsilon;
+    layer.setNodes(plus);
+    layer.forward(next);
+    const double positive = error();
+    layer.setNodes(minus);
+    layer.forward(next);
+    const double negative = error();
+    const double numerical = (positive - negative) / (2.0 * epsilon);
+    SCOPED_TRACE(i);
+    ASSERT_TRUE(std::isfinite(numerical));
+    EXPECT_NEAR(hidden_sigma[i], numerical, tolerance);
+  };
+  for(size_t j = 0; j < D; j += std::max<size_t>(1, D / 4)){
+    for(size_t col : {size_t(0), size_t(S / 2), size_t(S)}){
+      const size_t i = j * (S + 1) + col;
+      auto plus = weights;
+      auto minus = weights;
+      plus[i] += epsilon;
+      minus[i] -= epsilon;
+      layer.setNodes(input);
+      layer.setWeights(plus.data());
+      layer.forward(next);
+      const double positive = error();
+      layer.setWeights(minus.data());
+      layer.forward(next);
+      const double negative = error();
+      const double numerical = (positive - negative) / (2.0 * epsilon);
+      const double analytical = output_sigma[j] * (col == S ? 1.0 : activated[col]);
+      SCOPED_TRACE(i);
+      ASSERT_TRUE(std::isfinite(numerical));
+      EXPECT_NEAR(analytical, numerical, tolerance);
+    };
+  };
+};
+};
 
 template<typename Activation, typename OutputActivation, typename Loss>
 void checkLayerMath(bool gpu){
@@ -863,8 +1143,6 @@ void checkLayerMath(bool gpu){
   };
 };
 
-
-
 TEST(LayerMathematics, NumericalGradients){
   for(bool gpu : {false, true}){
     checkLayerMath<NN::Linear, NN::Linear, NN::MSE>(gpu);
@@ -877,100 +1155,120 @@ TEST(LayerMathematics, NumericalGradients){
   };
 };
 
+TEST(LayerMathematics, ReferenceForwardSigmaAndUpdate){
+  for(auto backend : {LayerBackend::CPU, LayerBackend::GPU}){
+    checkReferenceStep<3, 3, NN::Linear, NN::Linear, NN::MSE>(backend);
+    checkReferenceStep<3, 3, NN::Sigmoid, NN::Sigmoid, NN::MSE>(backend);
+    checkReferenceStep<3, 3, NN::ReLU, NN::Linear, NN::MSE>(backend);
+    checkReferenceStep<3, 3, NN::Softmax, NN::Linear, NN::MSE>(backend);
+    checkReferenceStep<3, 3, NN::Linear, NN::Sigmoid, NN::MSE>(backend);
+    checkReferenceStep<3, 3, NN::Linear, NN::ReLU, NN::MSE>(backend);
+    checkReferenceStep<3, 3, NN::Linear, NN::Softmax, NN::MSE>(backend);
+    checkReferenceStep<3, 3, NN::Linear, NN::Softmax, NN::CrossEntropy>(backend);
+    checkReferenceStep<3, 3, NN::Sigmoid, NN::Softmax, NN::CrossEntropy>(backend);
+    checkReferenceStep<3, 3, NN::ReLU, NN::Softmax, NN::CrossEntropy>(backend);
+    checkReferenceStep<3, 3, NN::Softmax, NN::Softmax, NN::CrossEntropy>(backend);
+  };
+};
+
+TEST(LayerMathematics, ThreadedReferenceForwardSigmaAndUpdate){
+  checkReferenceStep<65, 65, NN::Linear, NN::Linear, NN::MSE>(LayerBackend::Threads);
+  checkReferenceStep<65, 65, NN::Sigmoid, NN::Sigmoid, NN::MSE>(LayerBackend::Threads);
+  checkReferenceStep<65, 65, NN::ReLU, NN::Linear, NN::MSE>(LayerBackend::Threads);
+  checkReferenceStep<65, 65, NN::Softmax, NN::Linear, NN::MSE>(LayerBackend::Threads);
+  checkReferenceStep<65, 65, NN::Linear, NN::Softmax, NN::CrossEntropy>(LayerBackend::Threads);
+  checkReferenceStep<65, 65, NN::Softmax, NN::Softmax, NN::CrossEntropy>(LayerBackend::Threads);
+};
+
+TEST(LayerMathematics, ThreadedActivationAndFusedCrossEntropy){
+  checkReferenceStep<4097, 2, NN::Linear, NN::Softmax, NN::CrossEntropy>(LayerBackend::Threads);
+  checkReferenceStep<4097, 2, NN::Sigmoid, NN::Softmax, NN::CrossEntropy>(LayerBackend::Threads);
+  checkReferenceStep<4097, 2, NN::ReLU, NN::Softmax, NN::CrossEntropy>(LayerBackend::Threads);
+  checkReferenceStep<4097, 2, NN::Softmax, NN::Softmax, NN::CrossEntropy>(LayerBackend::Threads);
+};
+
+TEST(LayerMathematics, ThreadedNumericalGradients){
+  checkNumericalGradients<65, 65, NN::ReLU, NN::Softmax, NN::CrossEntropy>(LayerBackend::Threads);
+  checkNumericalGradients<65, 65, NN::Softmax, NN::Linear, NN::MSE>(LayerBackend::Threads);
+};
+
+TEST(LayerMathematics, GPUWorkgroupBoundaries){
+  checkReferenceStep<31, 5, NN::ReLU, NN::Softmax, NN::CrossEntropy>(LayerBackend::GPU);
+  checkReferenceStep<32, 5, NN::ReLU, NN::Softmax, NN::CrossEntropy>(LayerBackend::GPU);
+  checkReferenceStep<33, 5, NN::ReLU, NN::Softmax, NN::CrossEntropy>(LayerBackend::GPU);
+  checkReferenceStep<255, 3, NN::ReLU, NN::Softmax, NN::CrossEntropy>(LayerBackend::GPU);
+  checkReferenceStep<256, 3, NN::ReLU, NN::Softmax, NN::CrossEntropy>(LayerBackend::GPU);
+  checkReferenceStep<257, 3, NN::ReLU, NN::Softmax, NN::CrossEntropy>(LayerBackend::GPU);
+  checkReferenceStep<3, 257, NN::ReLU, NN::Softmax, NN::CrossEntropy>(LayerBackend::GPU);
+  checkReferenceStep<512, 2, NN::ReLU, NN::Softmax, NN::CrossEntropy>(LayerBackend::GPU);
+  checkReferenceStep<16, 1000, NN::ReLU, NN::Softmax, NN::CrossEntropy>(LayerBackend::GPU);
+};
+
+TEST(LayerMathematics, LargeOutputLossAndSoftmaxSigma){
+  checkReferenceStep<3, 257, NN::Linear, NN::Softmax, NN::MSE>(LayerBackend::GPU);
+  checkReferenceStep<3, 257, NN::Linear, NN::Softmax, NN::CrossEntropy>(LayerBackend::GPU);
+  checkReferenceStep<3, 1000, NN::Linear, NN::Softmax, NN::CrossEntropy>(LayerBackend::GPU);
+};
+
+TEST(LayerMathematics, ZeroLearningRatePreservesWeights){
+  for(auto backend : {LayerBackend::CPU, LayerBackend::Threads, LayerBackend::GPU}){
+    if(backend == LayerBackend::Threads) checkReferenceStep<65, 65, NN::ReLU, NN::Softmax, NN::CrossEntropy>(backend, 0.0f);
+    else checkReferenceStep<3, 3, NN::ReLU, NN::Softmax, NN::CrossEntropy>(backend, 0.0f);
+  };
+};
+
 
 
 // =============================
 // ======= CPU/GPU Parity ======
 // =============================
-
 template<unsigned int S, unsigned int D>
 void checkLayerGPUParity(){
   NN::Layer<S, D> cpu;
   NN::Layer<S, D> gpu;
   NN::Layer<D, 1> cpu_next;
   NN::Layer<D, 1> gpu_next;
-
   cpu.setGpuAcceleration(false);
   cpu_next.setGpuAcceleration(false);
   gpu.setGpuAcceleration(true);
   gpu_next.setGpuAcceleration(true);
-
   cpu.template setActivation<NN::ReLU>();
   gpu.template setActivation<NN::ReLU>();
   cpu_next.template setActivation<NN::Softmax>();
   gpu_next.template setActivation<NN::Softmax>();
   cpu_next.template setLoss<NN::CrossEntropy>();
   gpu_next.template setLoss<NN::CrossEntropy>();
-
   cpu.setLearningRate(0.01f);
   gpu.setLearningRate(0.01f);
-
-  std::array<float, S> input{};
-  std::array<float, (S + 1) * D> weights{};
+  const auto input = referenceInput<S>();
+  const auto weights = referenceWeights<S, D>();
   std::array<float, D> target{};
-
-  for(size_t i = 0; i < S; i++)
-    input[i] = 0.1f * (int(i % 7) - 3);
-
-  for(size_t j = 0; j < D; j++){
-    for(size_t i = 0; i < S; i++)
-      weights[j * (S + 1) + i] = 0.015f * (int((i * 3 + j * 5) % 11) - 5);
-
-    weights[j * (S + 1) + S] = 0.02f * (int(j % 5) - 2);
-  };
-
   target[D / 2] = 1.0f;
-
   cpu.setNodes(input);
   gpu.setNodes(input);
   cpu.setWeights(weights.data());
   gpu.setWeights(weights.data());
-
   cpu.forward(cpu_next);
   gpu.forward(gpu_next);
-
-  const float* cpu_output = cpu_next.getActivatedNodes();
-  const float* gpu_output = gpu_next.getActivatedNodes();
-
   for(size_t i = 0; i < D; i++){
     SCOPED_TRACE(i);
-    ASSERT_TRUE(std::isfinite(cpu_output[i]));
-    ASSERT_TRUE(std::isfinite(gpu_output[i]));
-    EXPECT_NEAR(cpu_output[i], gpu_output[i], 1e-4);
+    EXPECT_NEAR(cpu_next.getActivatedNodes()[i], gpu_next.getActivatedNodes()[i], 1e-4);
   };
-
   cpu_next.backprop_initial(target);
   gpu_next.backprop_initial(target);
-
-  const float* cpu_output_sigma = cpu_next.getSigma();
-  const float* gpu_output_sigma = gpu_next.getSigma();
-
   for(size_t i = 0; i < D; i++){
     SCOPED_TRACE(i);
-    EXPECT_NEAR(cpu_output_sigma[i], gpu_output_sigma[i], 1e-4);
+    EXPECT_NEAR(cpu_next.getSigma()[i], gpu_next.getSigma()[i], 1e-4);
   };
-
   cpu.backprop(cpu_next);
   gpu.backprop(gpu_next);
-
-  const float* cpu_sigma = cpu.getSigma();
-  const float* gpu_sigma = gpu.getSigma();
-
   for(size_t i = 0; i < S; i++){
     SCOPED_TRACE(i);
-    ASSERT_TRUE(std::isfinite(cpu_sigma[i]));
-    ASSERT_TRUE(std::isfinite(gpu_sigma[i]));
-    EXPECT_NEAR(cpu_sigma[i], gpu_sigma[i], 1e-4);
+    EXPECT_NEAR(cpu.getSigma()[i], gpu.getSigma()[i], 1e-4);
   };
-
-  const float* cpu_weights = cpu.getWeights();
-  const float* gpu_weights = gpu.getWeights();
-
   for(size_t i = 0; i < weights.size(); i++){
     SCOPED_TRACE(i);
-    ASSERT_TRUE(std::isfinite(cpu_weights[i]));
-    ASSERT_TRUE(std::isfinite(gpu_weights[i]));
-    EXPECT_NEAR(cpu_weights[i], gpu_weights[i], 1e-4);
+    EXPECT_NEAR(cpu.getWeights()[i], gpu.getWeights()[i], 1e-4);
   };
 };
 
@@ -978,4 +1276,219 @@ TEST(LayerMathematics, CPUAndGPUParity){
   checkLayerGPUParity<33, 5>();
   checkLayerGPUParity<257, 3>();
   checkLayerGPUParity<3, 257>();
+};
+
+
+TEST(LayerMathematics, ActivationCacheInvalidatesAfterChangingNodes){
+  for(bool gpu : {false, true}){
+    NN::Layer<3, 1> layer;
+    layer.setGpuAcceleration(gpu);
+    layer.setActivation<NN::Softmax>();
+    layer.setNodes({0.0f, 0.0f, 0.0f});
+    const float* initial = layer.getActivatedNodes();
+    for(size_t i = 0; i < 3; i++) EXPECT_NEAR(initial[i], 1.0 / 3.0, 1e-6);
+    layer.setNodes({2.0f, 0.0f, -1.0f});
+    const auto expected = referenceActivation<NN::Softmax>(std::vector<double>{2.0, 0.0, -1.0});
+    expectReference(std::span<const float>(layer.getActivatedNodes(), 3), expected, 1e-6);
+    expectReference(std::span<const float>(layer.getActivatedNodes(), 3), expected, 1e-6);
+  };
+};
+
+TEST(LayerMathematics, GPUHeaderUpdatesActivationAndLoss){
+  NN::Layer<3, 1> layer;
+  layer.setGpuAcceleration(true);
+  layer.setNodes({-1.0f, 0.0f, 2.0f});
+  layer.setActivation<NN::Linear>();
+  expectReference(std::span<const float>(layer.getActivatedNodes(), 3), std::vector<double>{-1.0, 0.0, 2.0}, 1e-6);
+  layer.setActivation<NN::Sigmoid>();
+  expectReference(std::span<const float>(layer.getActivatedNodes(), 3), referenceActivation<NN::Sigmoid>(std::vector<double>{-1.0, 0.0, 2.0}), 1e-6);
+  layer.setActivation<NN::ReLU>();
+  expectReference(std::span<const float>(layer.getActivatedNodes(), 3), std::vector<double>{0.0, 0.0, 2.0}, 1e-6);
+  layer.setActivation<NN::Softmax>();
+  layer.setLoss<NN::CrossEntropy>();
+  layer.backprop_initial({0.0f, 0.0f, 1.0f});
+  const auto expected = referenceOutputSigma<NN::Softmax, NN::CrossEntropy>(std::vector<double>{-1.0, 0.0, 2.0}, std::vector<double>{0.0, 0.0, 1.0});
+  expectReference(std::span<const float>(layer.getSigma(), 3), expected, 1e-6);
+};
+
+
+
+// =============================
+// ======= GPU/CPU State =======
+// =============================
+TEST(LayerMathematics, GPUReadbackAndSerialization){
+  NN::Layer<3, 3> layer;
+  NN::Layer<3, 1> next;
+  layer.setGpuAcceleration(true);
+  next.setGpuAcceleration(true);
+  next.setActivation<NN::Softmax>();
+  next.setLoss<NN::CrossEntropy>();
+  const std::array<float, 3> input{0.2f, -0.4f, 0.7f};
+  const std::array<float, 12> weights{0.2f, -0.1f, 0.3f, 0.1f, -0.3f, 0.2f, 0.1f, -0.2f, 0.1f, 0.4f, -0.2f, 0.05f};
+  const std::array<float, 3> target{0.0f, 1.0f, 0.0f};
+  const auto logits = referenceForward<3, 3>(asDouble(input), asDouble(weights));
+  const auto sigma = referenceOutputSigma<NN::Softmax, NN::CrossEntropy>(logits, asDouble(target));
+  const auto expected = referenceUpdate<3, 3>(asDouble(weights), asDouble(input), sigma, 0.01);
+  layer.setNodes(input);
+  layer.setWeights(weights.data());
+  layer.setLearningRate(0.01f);
+  layer.forward(next);
+  next.backprop_initial(target);
+  layer.backprop(next);
+  expectReference(std::span<const float>(layer.getWeights(), 12), expected, 1e-5);
+  const std::string data = layer.serialize();
+  NN::Layer<3, 3> restored;
+  restored.deserialize(data);
+  expectReference(std::span<const float>(restored.getWeights(), 12), expected, 1e-5);
+  const auto expected_logits = referenceForward<3, 3>(asDouble(input), expected);
+  restored.setNodes(input);
+  restored.setGpuAcceleration(false);
+  NN::Layer<3, 1> cpu_next;
+  cpu_next.setGpuAcceleration(false);
+  restored.forward(cpu_next);
+  expectReference(std::span<const float>(cpu_next.getNodes(), 3), expected_logits, 1e-5);
+  restored.setGpuAcceleration(true);
+  restored.setNodes(input);
+  restored.forward(cpu_next);
+  expectReference(std::span<const float>(cpu_next.getNodes(), 3), expected_logits, 1e-5);
+};
+
+TEST(LayerMathematics, GPUAndCPUAlternatingUpdates){
+  NN::Layer<3, 3> layer;
+  NN::Layer<3, 1> next;
+  next.setActivation<NN::Softmax>();
+  next.setLoss<NN::CrossEntropy>();
+  const auto input = referenceInput<3>();
+  const auto weights = referenceWeights<3, 3>();
+  const std::array<float, 3> target{0.0f, 1.0f, 0.0f};
+  auto expected = asDouble(weights);
+  const auto activated = asDouble(input);
+  layer.setNodes(input);
+  layer.setWeights(weights.data());
+  layer.setLearningRate(0.01f);
+  for(bool gpu : {true, false, true, false, true}){
+    SCOPED_TRACE(gpu ? "GPU" : "CPU");
+    layer.setGpuAcceleration(gpu);
+    next.setGpuAcceleration(gpu);
+    layer.setNodes(input);
+    layer.forward(next);
+    const auto logits = referenceForward<3, 3>(activated, expected);
+    const auto sigma = referenceOutputSigma<NN::Softmax, NN::CrossEntropy>(logits, asDouble(target));
+    next.backprop_initial(target);
+    layer.backprop(next);
+    expected = referenceUpdate<3, 3>(expected, activated, sigma, 0.01);
+    expectReference(std::span<const float>(layer.getWeights(), 12), expected, 1e-5);
+  };
+};
+
+TEST(LayerMathematics, GPUHeaderUpdatesLearningRate){
+  NN::Layer<2, 2> layer;
+  NN::Layer<2, 1> next;
+  layer.setGpuAcceleration(true);
+  next.setGpuAcceleration(true);
+  layer.setWeights({0.2f, -0.1f, 0.05f, -0.3f, 0.4f, -0.02f});
+  layer.setNodes({0.3f, -0.2f});
+  layer.setLearningRate(0.0f);
+  layer.forward(next);
+  next.setNodes({0.2f, -0.3f});
+  next.backprop_initial({0.0f, 0.0f});
+  layer.backprop(next);
+  const std::array<float, 6> original{0.2f, -0.1f, 0.05f, -0.3f, 0.4f, -0.02f};
+  for(size_t i = 0; i < 6; i++) EXPECT_NEAR(layer.getWeights()[i], original[i], 1e-6);
+  layer.setLearningRate(0.02f);
+  layer.backprop(next);
+  const std::array<float, 6> expected{0.1988f, -0.0992f, 0.046f, -0.2982f, 0.3988f, -0.014f};
+  for(size_t i = 0; i < 6; i++) EXPECT_NEAR(layer.getWeights()[i], expected[i], 1e-6);
+};
+
+
+
+// =============================
+// ======= Network Gradient ==== 
+// =============================
+TEST(LayerMathematics, ReverseBackpropUsesOriginalOutgoingWeights){
+  for(auto backend : {LayerBackend::CPU, LayerBackend::GPU}){
+    SCOPED_TRACE(backendName(backend));
+    NN::Layer<2, 3> first;
+    NN::Layer<3, 2> middle;
+    NN::Layer<2, 1> output;
+    first.setGpuAcceleration(backend == LayerBackend::GPU);
+    middle.setGpuAcceleration(backend == LayerBackend::GPU);
+    output.setGpuAcceleration(backend == LayerBackend::GPU);
+    first.setActivation<NN::Linear>();
+    middle.setActivation<NN::Linear>();
+    output.setActivation<NN::Linear>();
+    output.setLoss<NN::MSE>();
+    first.setLearningRate(0.01f);
+    middle.setLearningRate(0.01f);
+    const std::array<float, 2> input{0.3f, -0.2f};
+    const std::array<float, 9> first_weights{0.2f, -0.1f, 0.05f, -0.3f, 0.4f, -0.02f, 0.1f, 0.2f, 0.03f};
+    const std::array<float, 8> middle_weights{0.2f, -0.1f, 0.3f, 0.05f, -0.2f, 0.4f, 0.1f, -0.03f};
+    const std::array<float, 2> target{0.4f, -0.2f};
+    first.setNodes(input);
+    first.setWeights(first_weights.data());
+    middle.setWeights(middle_weights.data());
+    const auto hidden = referenceForward<2, 3>(asDouble(input), asDouble(first_weights));
+    const auto logits = referenceForward<3, 2>(hidden, asDouble(middle_weights));
+    const auto output_sigma = referenceOutputSigma<NN::Linear, NN::MSE>(logits, asDouble(target));
+    const auto middle_sigma = referenceHiddenGradient<3, 2>(asDouble(middle_weights), output_sigma);
+    const auto first_sigma = referenceHiddenGradient<2, 3>(asDouble(first_weights), middle_sigma);
+    const auto expected_middle = referenceUpdate<3, 2>(asDouble(middle_weights), hidden, output_sigma, 0.01);
+    const auto expected_first = referenceUpdate<2, 3>(asDouble(first_weights), asDouble(input), middle_sigma, 0.01);
+    first.forward(middle);
+    middle.forward(output);
+    output.backprop_initial(target);
+    middle.backprop(output);
+    first.backprop(middle);
+    expectReference(std::span<const float>(output.getSigma(), 2), output_sigma, 1e-5);
+    expectReference(std::span<const float>(middle.getSigma(), 3), middle_sigma, 1e-5);
+    expectReference(std::span<const float>(first.getSigma(), 2), first_sigma, 1e-5);
+    expectReference(std::span<const float>(middle.getWeights(), 8), expected_middle, 1e-5);
+    expectReference(std::span<const float>(first.getWeights(), 9), expected_first, 1e-5);
+  };
+};
+
+
+
+// =============================
+// ======= Training ============
+// =============================
+template<unsigned int S, unsigned int D>
+void checkFixedSampleTraining(LayerBackend backend){
+  SCOPED_TRACE(backendName(backend));
+  NN::Layer<S, D> layer;
+  NN::Layer<D, 1> next;
+  layer.template setGpuAcceleration(backend == LayerBackend::GPU);
+  next.setGpuAcceleration(backend == LayerBackend::GPU);
+  next.template setActivation<NN::Softmax>();
+  next.template setLoss<NN::CrossEntropy>();
+  layer.setLearningRate(0.05f);
+  const auto input = referenceInput<S>();
+  std::array<float, (S + 1) * D> weights{};
+  std::array<float, D> target{};
+  target[D / 2] = 1.0f;
+  layer.setWeights(weights.data());
+  double previous = std::numeric_limits<double>::infinity();
+  for(size_t step = 0; step < 20; step++){
+    layer.setNodes(input);
+    layer.forward(next);
+    const float* output = next.getActivatedNodes();
+    const double loss = -std::log(std::max(double(output[D / 2]), 1e-7));
+    ASSERT_TRUE(std::isfinite(loss));
+    EXPECT_LT(loss, previous);
+    previous = loss;
+    next.backprop_initial(target);
+    layer.backprop(next);
+    const float* updated = layer.getWeights();
+    for(size_t i = 0; i < weights.size(); i++) ASSERT_TRUE(std::isfinite(updated[i]));
+  };
+  layer.setNodes(input);
+  layer.forward(next);
+  EXPECT_GT(next.getActivatedNodes()[D / 2], 1.0f / D);
+};
+
+TEST(LayerMathematics, FixedSampleTraining){
+  checkFixedSampleTraining<3, 3>(LayerBackend::CPU);
+  checkFixedSampleTraining<3, 3>(LayerBackend::GPU);
+  checkFixedSampleTraining<65, 65>(LayerBackend::Threads);
 };

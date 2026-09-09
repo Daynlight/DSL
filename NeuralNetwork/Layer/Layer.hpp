@@ -15,6 +15,7 @@
 // core
 template <unsigned int S, unsigned int D>
 inline NN::Layer<S, D>::Layer() noexcept {
+  NN::GPUAcceleration::get();
   nodes[S] = 1.0f;
   setWeights(-1.0f, 1.0f);
   loss = std::make_unique<NN::MSE>();
@@ -33,6 +34,7 @@ inline NN::Layer<S, D>::~Layer() noexcept { };
 // ============================== //
 template <unsigned int S, unsigned int D>
 inline float *NN::Layer<S, D>::getNodes() noexcept {
+  glFinish();
   if(cpu_nodes_dirty){
     std::vector<float> data;
     if(debug_logs){
@@ -52,6 +54,7 @@ inline float *NN::Layer<S, D>::getNodes() noexcept {
   gpu_nodes_dirty = true;
   activated_after_forward = false;
 
+  glFinish();
   return nodes;
 };
 
@@ -59,6 +62,7 @@ inline float *NN::Layer<S, D>::getNodes() noexcept {
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::setNodes(std::initializer_list<float> nodes) noexcept {
+  glFinish();
   const size_t size = std::min(nodes.size(), size_t(S));
 
   std::copy_n(nodes.begin(), size, this->nodes);
@@ -68,12 +72,14 @@ inline void NN::Layer<S, D>::setNodes(std::initializer_list<float> nodes) noexce
   gpu_nodes_dirty = true;
   cpu_nodes_dirty = false;
   activated_after_forward = false;
+  glFinish();
 };
 
 
 
 template<unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::setNodes(std::span<const float> nodes) noexcept {
+  glFinish();
   const size_t size = std::min(nodes.size(), size_t(S));
 
   std::copy_n(nodes.begin(), size, this->nodes);
@@ -83,12 +89,14 @@ inline void NN::Layer<S, D>::setNodes(std::span<const float> nodes) noexcept {
   gpu_nodes_dirty = true;
   cpu_nodes_dirty = false;
   activated_after_forward = false;
+  glFinish();
 };
 
 
 
 template <unsigned int S, unsigned int D>
 inline float *NN::Layer<S, D>::getActivatedNodes() noexcept {
+  glFinish();
   activateNodes();
 
   if(cpu_activated_dirty){
@@ -107,6 +115,7 @@ inline float *NN::Layer<S, D>::getActivatedNodes() noexcept {
     cpu_activated_dirty = false;
   };
 
+  glFinish();
   return activated;
 };
 
@@ -114,6 +123,7 @@ inline float *NN::Layer<S, D>::getActivatedNodes() noexcept {
 
 template <unsigned int S, unsigned int D>
 inline float NN::Layer<S, D>::getActivatedNode(unsigned int i) noexcept {
+  glFinish();
   if(cpu_nodes_dirty){
     std::vector<float> data;
     if(debug_logs){
@@ -131,6 +141,7 @@ inline float NN::Layer<S, D>::getActivatedNode(unsigned int i) noexcept {
   };
 
   std::span<const float> layer(nodes, S);
+  glFinish();
   return activation->fun(layer, i);
 };
 
@@ -138,6 +149,7 @@ inline float NN::Layer<S, D>::getActivatedNode(unsigned int i) noexcept {
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::activateNodes_cpu() noexcept {
+  glFinish();
   if(cpu_nodes_dirty){
     std::vector<float> data;
     if(debug_logs){
@@ -158,12 +170,14 @@ inline void NN::Layer<S, D>::activateNodes_cpu() noexcept {
 
   cpu_activated_dirty = false;
   gpu_activated_dirty = true;
+  glFinish();
 };
 
 
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::activateNodes_threads() noexcept {
+  glFinish();
   if(cpu_nodes_dirty){
     std::vector<float> data;
     if(debug_logs){
@@ -188,12 +202,14 @@ inline void NN::Layer<S, D>::activateNodes_threads() noexcept {
 
   cpu_activated_dirty = false;
   gpu_activated_dirty = true;
+  glFinish();
 };
 
 
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::activateNodes_gpu() noexcept {
+  glFinish();
   ensure_gpu_storage();
 
   auto& gpu = NN::GPUAcceleration::get();
@@ -221,6 +237,10 @@ inline void NN::Layer<S, D>::activateNodes_gpu() noexcept {
     printf("activateNodes_gpu ActivateNodesShader Run: %.3f ms\n", std::chrono::duration<double, std::milli>(end - start).count());
   };
   glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+  glFinish();
+  for(GLenum error; (error = glGetError()) != GL_NO_ERROR;){
+    printf("Activation OpenGL error: 0x%X\n", error);
+  }
 
   cpu_activated_dirty = true;
   gpu_activated_dirty = false;
@@ -230,6 +250,7 @@ inline void NN::Layer<S, D>::activateNodes_gpu() noexcept {
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::activateNodes() noexcept {
+  glFinish();
   if(activated_after_forward) return;
 
   if(!gpu_acceleration){
@@ -263,12 +284,14 @@ inline void NN::Layer<S, D>::activateNodes() noexcept {
   };
 
   activated_after_forward = true;
+  glFinish();
 };
 
 
 
 template <unsigned int S, unsigned int D>
 inline float *NN::Layer<S, D>::getWeights() noexcept {
+  glFinish();
   if(cpu_weights_dirty){
     std::vector<float> data;
     if(debug_logs){
@@ -286,6 +309,7 @@ inline float *NN::Layer<S, D>::getWeights() noexcept {
   };
 
   gpu_weights_dirty = true;
+  glFinish();
   return weights;
 };
 
@@ -293,6 +317,7 @@ inline float *NN::Layer<S, D>::getWeights() noexcept {
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::setWeights(std::initializer_list<float> weights) noexcept {
+  glFinish();
   const size_t size = std::min(weights.size(), size_t((S + 1) * D));
 
   std::copy_n(weights.begin(), size, this->weights);
@@ -300,22 +325,26 @@ inline void NN::Layer<S, D>::setWeights(std::initializer_list<float> weights) no
 
   gpu_weights_dirty = true;
   cpu_weights_dirty = false;
+  glFinish();
 };
 
 
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::setWeights(const float* weights) noexcept {
+  glFinish();
   std::copy_n(weights, (S + 1) * D, this->weights);
 
   gpu_weights_dirty = true;
   cpu_weights_dirty = false;
+  glFinish();
 };
 
 
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::setWeights(float min, float max) noexcept {  
+  glFinish();
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<float> dist(min, max);
@@ -325,6 +354,7 @@ inline void NN::Layer<S, D>::setWeights(float min, float max) noexcept {
   
   gpu_weights_dirty = true;
   cpu_weights_dirty = false;
+  glFinish();
 };
 
 
@@ -338,8 +368,10 @@ inline float NN::Layer<S, D>::getLearningRate() const noexcept {
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::setLearningRate(float learning_rate) noexcept {
+  glFinish();
   this->learning_rate = learning_rate;
   gpu_header_dirty = true;
+  glFinish();
 };
 
 
@@ -353,13 +385,16 @@ inline bool NN::Layer<S, D>::getGpuAcceleration() const noexcept {
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::setGpuAcceleration(bool value) noexcept {
+  glFinish();
   gpu_acceleration = value;
+  glFinish();
 };
 
 
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::ensure_gpu_storage() {
+  glFinish();
   if(gpu_weights_dirty && cpu_weights_dirty)
     throw std::runtime_error("GPU and CPU weights are both dirty");
 
@@ -493,6 +528,8 @@ inline void NN::Layer<S, D>::ensure_gpu_storage() {
     gpu_sigma_dirty = false;
   };
 
+  glFinish();
+
   sync_gpu_header();
 };
 
@@ -500,6 +537,7 @@ inline void NN::Layer<S, D>::ensure_gpu_storage() {
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::sync_gpu_header() noexcept {
+  glFinish();
   if(!gpu_storage_ready || !gpu_header_dirty) return;
 
   unsigned int activation_id = 0;
@@ -530,6 +568,7 @@ inline void NN::Layer<S, D>::sync_gpu_header() noexcept {
     printf("Sync GPUHeader Set: %zu bytes, %.3f ms\n", sizeof(float) * 5, std::chrono::duration<double, std::milli>(end - start).count());
   };
 
+  glFinish();
   gpu_header_dirty = false;
 };
 
@@ -545,9 +584,11 @@ inline const std::unique_ptr<NN::iActivation>& NN::Layer<S, D>::getActivation() 
 template <unsigned int S, unsigned int D>
 template<typename T>
 inline void NN::Layer<S, D>::setActivation() noexcept {
+  glFinish();
   activation = std::make_unique<T>();
   gpu_header_dirty = true;
   activated_after_forward = false;
+  glFinish();
 };
 
 
@@ -562,8 +603,10 @@ inline const std::unique_ptr<NN::iLoss>& NN::Layer<S, D>::getLoss() const noexce
 template <unsigned int S, unsigned int D>
 template<typename T>
 inline void NN::Layer<S, D>::setLoss() noexcept {
+  glFinish();
   loss = std::make_unique<T>();
   gpu_header_dirty = true;
+  glFinish();
 };
 
 
@@ -578,6 +621,7 @@ inline float &NN::Layer<S, D>::operator[](unsigned int i) {
 
 template <unsigned int S, unsigned int D>
 inline const float *NN::Layer<S, D>::getSigma() noexcept {
+  glFinish();
   if(cpu_sigma_dirty){
     std::vector<float> data;
     if(debug_logs){
@@ -593,7 +637,8 @@ inline const float *NN::Layer<S, D>::getSigma() noexcept {
     };
     cpu_sigma_dirty = false;
   };
-
+  
+  glFinish();
   return sigma;
 };
 
@@ -605,6 +650,7 @@ inline const float *NN::Layer<S, D>::getSigma() noexcept {
 template <unsigned int S, unsigned int D>
 template <unsigned int N>
 inline void NN::Layer<S, D>::forward_cpu(Layer<D, N>& layer) noexcept {
+  glFinish();
   if(cpu_weights_dirty){
     std::vector<float> data;
     if(debug_logs){
@@ -651,6 +697,7 @@ inline void NN::Layer<S, D>::forward_cpu(Layer<D, N>& layer) noexcept {
   layer.gpu_nodes_dirty = true;
   layer.cpu_nodes_dirty = false;
   layer.activated_after_forward = false;
+  glFinish();
 };
 
 
@@ -658,6 +705,7 @@ inline void NN::Layer<S, D>::forward_cpu(Layer<D, N>& layer) noexcept {
 template <unsigned int S, unsigned int D>
 template <unsigned int N>
 inline void NN::Layer<S, D>::forward_threads(Layer<D, N>& layer) noexcept {
+  glFinish();
   if(cpu_weights_dirty){
     std::vector<float> data;
     if(debug_logs){
@@ -708,6 +756,7 @@ inline void NN::Layer<S, D>::forward_threads(Layer<D, N>& layer) noexcept {
   layer.gpu_nodes_dirty = true;
   layer.cpu_nodes_dirty = false;
   layer.activated_after_forward = false;
+  glFinish();
 };
 
 
@@ -715,6 +764,7 @@ inline void NN::Layer<S, D>::forward_threads(Layer<D, N>& layer) noexcept {
 template <unsigned int S, unsigned int D>
 template <unsigned int N>
 inline void NN::Layer<S, D>::forward_gpu(Layer<D, N>& layer) {
+  glFinish();
   ensure_gpu_storage();
   layer.ensure_gpu_storage();
 
@@ -722,18 +772,21 @@ inline void NN::Layer<S, D>::forward_gpu(Layer<D, N>& layer) {
 
   auto& shader = NN::GPUAcceleration::get().getForwardShader();
   
-  if(debug_logs){
-    glFinish();
-  };
+  glFinish();
   auto start = std::chrono::steady_clock::now();
   shader.run(gpu_storage, D);
   
   glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+  glFinish();
+  for(GLenum error; (error = glGetError()) != GL_NO_ERROR;){
+    printf("Backprop Forward Shader error: 0x%X\n", error);
+  }
   if(debug_logs){
-    glFinish();
     auto end = std::chrono::steady_clock::now();
     printf("forward_gpu ForwardShader Run: %.3f ms\n", std::chrono::duration<double, std::milli>(end - start).count());
   };
+
+  glFinish();
 
   layer.cpu_nodes_dirty = true;
   layer.gpu_nodes_dirty = false;
@@ -745,6 +798,7 @@ inline void NN::Layer<S, D>::forward_gpu(Layer<D, N>& layer) {
 template <unsigned int S, unsigned int D>
 template <unsigned int N>
 inline void NN::Layer<S, D>::forward(NN::Layer<D, N>& layer) {
+  glFinish();
   nodes[S] = 1.0;
   activated_after_forward = false;
   activateNodes();
@@ -758,6 +812,7 @@ inline void NN::Layer<S, D>::forward(NN::Layer<D, N>& layer) {
   else{
     forward_gpu(layer);
   };
+  glFinish();
 };
 
 
@@ -771,6 +826,7 @@ inline void NN::Layer<S, D>::backprop_initial(std::initializer_list<float> targe
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::backprop_initial_cpu(std::span<const float> target) noexcept {
+  glFinish();
   if(cpu_nodes_dirty){
     std::vector<float> data;
     if(debug_logs){
@@ -818,6 +874,7 @@ inline void NN::Layer<S, D>::backprop_initial_cpu(std::span<const float> target)
 
   std::memcpy(sigma, output, sizeof(output));
 
+  glFinish();
   cpu_sigma_dirty = false;
   gpu_sigma_dirty = true;
 };
@@ -826,6 +883,7 @@ inline void NN::Layer<S, D>::backprop_initial_cpu(std::span<const float> target)
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::backprop_initial_threads(std::span<const float> target) noexcept {
+  glFinish();
   if(cpu_nodes_dirty){
     std::vector<float> data;
     if(debug_logs){
@@ -879,12 +937,14 @@ inline void NN::Layer<S, D>::backprop_initial_threads(std::span<const float> tar
 
   cpu_sigma_dirty = false;
   gpu_sigma_dirty = true;
+  glFinish();
 };
 
 
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::backprop_initial_gpu(std::span<const float> target) noexcept {
+  glFinish();
   unsigned int activation_id = 0;
   unsigned int loss_id = 0;
 
@@ -897,39 +957,38 @@ inline void NN::Layer<S, D>::backprop_initial_gpu(std::span<const float> target)
   else if(dynamic_cast<NN::CrossEntropy*>(loss.get())) loss_id = 2;
 
   if(activation_id == 0 || loss_id == 0) return;
-
   ensure_gpu_storage();
 
   const size_t size = std::min<size_t>(S, target.size());
   std::vector<float> target_data(S, 0.0f);
   std::copy_n(target.data(), size, target_data.data());
 
-  if(debug_logs){
-    glFinish();
-  };
+  glFinish();
   auto start = std::chrono::steady_clock::now();
   gpu_storage[GPUTarget].set(target_data);
+  glFinish();
   if(debug_logs){
-    glFinish();
     auto end = std::chrono::steady_clock::now();
     printf("backprop_initial_gpu GPUTarget Get: %zu bytes, %.3f ms\n", sizeof(target_data), std::chrono::duration<double, std::milli>(end - start).count());
   };
 
   auto& shader = NN::GPUAcceleration::get().getBackpropInitialShader();
   
-  if(debug_logs){
-    glFinish();
-  };
+  glFinish();
   start = std::chrono::steady_clock::now();
   shader.run(gpu_storage, activation_id == 3 ? 1 : (S + 255) / 256);
 
   glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+  glFinish();
+  for(GLenum error; (error = glGetError()) != GL_NO_ERROR;){
+    printf("Backprop Initial OpenGL error: 0x%X\n", error);
+  }
   if(debug_logs){
-    glFinish();
     auto end = std::chrono::steady_clock::now();
     printf("backprop_initial_gpu BackpropInitial Run: %.3f ms\n", std::chrono::duration<double, std::milli>(end - start).count());
   };
 
+  glFinish();
   cpu_sigma_dirty = true;
   gpu_sigma_dirty = false;
 };
@@ -938,6 +997,7 @@ inline void NN::Layer<S, D>::backprop_initial_gpu(std::span<const float> target)
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::backprop_initial(std::span<const float> target) noexcept {
+  glFinish();
   activateNodes();
   if(dynamic_cast<NN::Softmax*>(activation.get()) && dynamic_cast<NN::CrossEntropy*>(loss.get())){
     backprop_initial_softmax_cross_entropy_fuse(target);
@@ -957,12 +1017,14 @@ inline void NN::Layer<S, D>::backprop_initial(std::span<const float> target) noe
   else{
     backprop_initial_gpu(target);
   };
+  glFinish();
 };
 
 
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse_cpu(std::span<const float> target) noexcept {
+  glFinish();
   if(cpu_nodes_dirty){
     std::vector<float> data;
     gpu_storage[GPUNodes].get(data);
@@ -991,12 +1053,14 @@ inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse_cpu(std
 
   cpu_sigma_dirty = false;
   gpu_sigma_dirty = true;
+  glFinish();
 };
 
 
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse_threads(std::span<const float> target) noexcept {
+  glFinish();
   if(cpu_nodes_dirty){
     std::vector<float> data;
     gpu_storage[GPUNodes].get(data);
@@ -1029,43 +1093,46 @@ inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse_threads
 
   cpu_sigma_dirty = false;
   gpu_sigma_dirty = true;
+  glFinish();
 };
 
 
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse_gpu(std::span<const float> target) noexcept {
+  glFinish();
   ensure_gpu_storage();
 
   const size_t size = std::min<size_t>(S, target.size());
   std::vector<float> target_data(S, 0.0f);
   std::copy_n(target.data(), size, target_data.data());
 
-  if(debug_logs){
-    glFinish();
-  };
+  glFinish();
   auto start = std::chrono::steady_clock::now();
   gpu_storage[GPUTarget].set(target_data);
+  glFinish();
   if(debug_logs){
-    glFinish();
     auto end = std::chrono::steady_clock::now();
     printf("backprop_initial_gpu GPUTarget Get: %zu bytes, %.3f ms\n", sizeof(target_data), std::chrono::duration<double, std::milli>(end - start).count());
   };
 
   auto& shader = NN::GPUAcceleration::get().getBackpropSoftmaxCrossEntropyShader();
   
-  if(debug_logs){
-    glFinish();
-  };
+  glFinish();
   start = std::chrono::steady_clock::now();
   shader.run(gpu_storage, (S + 255) / 256);
+  
+  glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+  glFinish();
+  for(GLenum error; (error = glGetError()) != GL_NO_ERROR;){
+    printf("Backprop Initial Softmax Crosss Entropy OpenGL error: 0x%X\n", error);
+  }
   if(debug_logs){
-    glFinish();
     auto end = std::chrono::steady_clock::now();
     printf("backprop_initial_softmax_cross_entropy_fuse_gpu BackpropInitialSoftmaxEntropyFuse Run: %.3f ms\n", std::chrono::duration<double, std::milli>(end - start).count());
   };
 
-  glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+  glFinish();
 
   cpu_sigma_dirty = true;
   gpu_sigma_dirty = false;
@@ -1075,6 +1142,7 @@ inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse_gpu(std
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse(std::span<const float> target) noexcept {
+  glFinish();
   activateNodes();
   if(!gpu_acceleration){
     if(size_t(S) > multithreading_acceleration_size_threshold) backprop_initial_softmax_cross_entropy_fuse_threads(target);
@@ -1084,6 +1152,7 @@ inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse(std::sp
     backprop_initial_softmax_cross_entropy_fuse_gpu(target);
   };
   activated_after_forward = false;
+  glFinish();
 };
 
 
@@ -1091,6 +1160,7 @@ inline void NN::Layer<S, D>::backprop_initial_softmax_cross_entropy_fuse(std::sp
 template <unsigned int S, unsigned int D>
 template <unsigned int N>
 inline void NN::Layer<S, D>::backprop_cpu(Layer<D, N>& next_layer) noexcept {
+  glFinish();
   if(cpu_weights_dirty){
     std::vector<float> data;
     gpu_storage[GPUWeights].get(data);
@@ -1151,6 +1221,7 @@ inline void NN::Layer<S, D>::backprop_cpu(Layer<D, N>& next_layer) noexcept {
 
   gpu_weights_dirty = true;
   cpu_weights_dirty = false;
+  glFinish();
 };
 
 
@@ -1158,6 +1229,7 @@ inline void NN::Layer<S, D>::backprop_cpu(Layer<D, N>& next_layer) noexcept {
 template <unsigned int S, unsigned int D>
 template <unsigned int N>
 inline void NN::Layer<S, D>::backprop_threads(Layer<D, N>& next_layer) noexcept {
+  glFinish();
   if(cpu_weights_dirty){
     std::vector<float> data;
     gpu_storage[GPUWeights].get(data);
@@ -1248,6 +1320,7 @@ inline void NN::Layer<S, D>::backprop_threads(Layer<D, N>& next_layer) noexcept 
 
   gpu_weights_dirty = true;
   cpu_weights_dirty = false;
+  glFinish();
 };
 
 
@@ -1255,6 +1328,7 @@ inline void NN::Layer<S, D>::backprop_threads(Layer<D, N>& next_layer) noexcept 
 template <unsigned int S, unsigned int D>
 template <unsigned int N>
 inline void NN::Layer<S, D>::backprop_gpu(Layer<D, N>& next_layer) noexcept {
+  glFinish();
   unsigned int activation_id = 0;
 
   if(dynamic_cast<NN::Linear*>(activation.get())) activation_id = 1;
@@ -1273,30 +1347,32 @@ inline void NN::Layer<S, D>::backprop_gpu(Layer<D, N>& next_layer) noexcept {
 
   auto& shader = gpu.getBackpropSigmaShader();
   
-  if(debug_logs){
-    glFinish();
-  };
+  glFinish();
   auto start = std::chrono::steady_clock::now();
   shader.run(gpu_storage, (S + 31) / 32);
 
   glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+  glFinish();
+  for(GLenum error; (error = glGetError()) != GL_NO_ERROR;){
+    printf("Backprop Sigma OpenGL error: 0x%X\n", error);
+  }
   if(debug_logs){
-    glFinish();
     auto end = std::chrono::steady_clock::now();
     printf("backprop_gpu Sigma S=%u D=%u groups=%u: %.3f ms\n", S, D, (S + 31) / 32, std::chrono::duration<double, std::milli>(end - start).count());
   };
 
   if(activation_id == 3){
     auto& softmax_shader = gpu.getBackpropSoftmaxSigmaShader();
-    if(debug_logs){
-      glFinish();
-    };
+    glFinish();
     start = std::chrono::steady_clock::now();
     softmax_shader.run(gpu_storage, 1);
 
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+    glFinish();
+    for(GLenum error; (error = glGetError()) != GL_NO_ERROR;){
+      printf("Backprop Softmax OpenGL error: 0x%X\n", error);
+    }
     if(debug_logs){
-      glFinish();
       auto end = std::chrono::steady_clock::now();
       printf("backprop_gpu softmax S=%u D=%u groups=%u: %.3f ms\n", S, D, 1u, std::chrono::duration<double, std::milli>(end - start).count());
     };
@@ -1308,18 +1384,21 @@ inline void NN::Layer<S, D>::backprop_gpu(Layer<D, N>& next_layer) noexcept {
   if(learning_rate != 0.0f){
     auto& update_shader = gpu.getBackpropUpdateShader();
     
-    if(debug_logs){
-      glFinish();
-    };
+    glFinish();
     start = std::chrono::steady_clock::now();
     update_shader.run(gpu_storage, (S + 256) / 256, D);
 
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+    glFinish();
+    for(GLenum error; (error = glGetError()) != GL_NO_ERROR;){
+      printf("Backprop Update OpenGL error: 0x%X\n", error);
+    }
     if(debug_logs){
-      glFinish();
       auto end = std::chrono::steady_clock::now();
       printf("backprop_gpu Update S=%u D=%u groups=(%u,%u): %.3f ms\n", S, D, (S + 256) / 256, D, std::chrono::duration<double, std::milli>(end - start).count());
     };
+
+    glFinish();
 
     cpu_weights_dirty = true;
     gpu_weights_dirty = false;
@@ -1331,6 +1410,7 @@ inline void NN::Layer<S, D>::backprop_gpu(Layer<D, N>& next_layer) noexcept {
 template <unsigned int S, unsigned int D>
 template <unsigned int N>
 inline void NN::Layer<S, D>::backprop(Layer<D, N>& next_layer) noexcept {
+  glFinish();
   activateNodes();
   const size_t work = size_t(S) * D;
   if(!gpu_acceleration){
@@ -1341,6 +1421,7 @@ inline void NN::Layer<S, D>::backprop(Layer<D, N>& next_layer) noexcept {
     backprop_gpu(next_layer);
   };
   activated_after_forward = false;
+  glFinish();
 };
 
 
@@ -1394,6 +1475,7 @@ inline std::string NN::Layer<S, D>::print() const {
 
 template <unsigned int S, unsigned int D>
 inline std::string NN::Layer<S, D>::serialize() const noexcept {
+  glFinish();
   std::string data;
 
   auto write = [&](Field id, const void* source, uint64_t size){
@@ -1428,16 +1510,20 @@ inline std::string NN::Layer<S, D>::serialize() const noexcept {
   uint32_t loss_id = 0;
 
   if(dynamic_cast<NN::MSE*>(loss.get()))
-  loss_id = static_cast<uint32_t>(Loss::MSE);
+    loss_id = static_cast<uint32_t>(Loss::MSE);
   else if(dynamic_cast<NN::CrossEntropy*>(loss.get()))
     loss_id = static_cast<uint32_t>(Loss::CROSSENTROPY);
 
   write(Field::LOSS, &loss_id, sizeof(loss_id));
 
-  write(Field::WEIGHTS, weights, sizeof(weights));
+  const float* current_weights = const_cast<NN::Layer<S, D>*>(this)->getWeights();
+
+  write(Field::WEIGHTS, current_weights, sizeof(weights));
 
   uint32_t end = static_cast<uint32_t>(Field::END);
+
   data.append(reinterpret_cast<const char*>(&end), sizeof(end));
+  glFinish();
 
   return data;
 };
@@ -1446,10 +1532,11 @@ inline std::string NN::Layer<S, D>::serialize() const noexcept {
 
 template <unsigned int S, unsigned int D>
 inline void NN::Layer<S, D>::deserialize(const std::string &data){
+  glFinish();
   size_t offset = 0;
 
   auto read = [&](void* destination, size_t size){
-    if(offset + size > data.size()) throw std::runtime_error("Invalid serialized layer data");
+    if(size > data.size() - offset) throw std::runtime_error("Invalid serialized layer data");
 
     std::memcpy(destination, data.data() + offset, size);
     offset += size;
@@ -1457,6 +1544,7 @@ inline void NN::Layer<S, D>::deserialize(const std::string &data){
 
   while(offset < data.size()){
     uint32_t field_id = 0;
+
     read(&field_id, sizeof(field_id));
 
     Field field = static_cast<Field>(field_id);
@@ -1464,59 +1552,90 @@ inline void NN::Layer<S, D>::deserialize(const std::string &data){
     if(field == Field::END) break;
 
     uint64_t size = 0;
+
     read(&size, sizeof(size));
 
-    if(offset + size > data.size()) throw std::runtime_error("Invalid serialized layer field size");
+    if(size > data.size() - offset) throw std::runtime_error("Invalid serialized layer field size");
 
     switch(field){
       case Field::S_val:{
+        if(size != sizeof(uint32_t))
+          throw std::runtime_error("Invalid layer S size");
+
         uint32_t value = 0;
+
         read(&value, sizeof(value));
+
         if(value != S)
           throw std::runtime_error("Layer S size mismatch");
+
         break;
       };
 
       case Field::D_val:{
+        if(size != sizeof(uint32_t))
+          throw std::runtime_error("Invalid layer D size");
+
         uint32_t value = 0;
+
         read(&value, sizeof(value));
+
         if(value != D)
           throw std::runtime_error("Layer D size mismatch");
+
         break;
       };
 
       case Field::LEARNING_RATE:{
         if(size != sizeof(learning_rate))
           throw std::runtime_error("Invalid learning rate size");
-        read(&learning_rate, sizeof(learning_rate));
+
+        float value = 0.0f;
+
+        read(&value, sizeof(value));
+        setLearningRate(value);
+
         break;
       };
 
       case Field::ACTIVATION:{
+        if(size != sizeof(uint32_t))
+          throw std::runtime_error("Invalid activation size");
+
         uint32_t activation_id = 0;
+
         read(&activation_id, sizeof(activation_id));
 
         switch(static_cast<Activation>(activation_id)){
           case Activation::LINEAR:
             setActivation<NN::Linear>();
             break;
+
           case Activation::SIGMOID:
             setActivation<NN::Sigmoid>();
             break;
+
           case Activation::SOFTMAX:
             setActivation<NN::Softmax>();
             break;
+
           case Activation::RELU:
             setActivation<NN::ReLU>();
             break;
+
           default:
             throw std::runtime_error("Unknown activation type");
         };
+
         break;
       };
 
       case Field::LOSS:{
+        if(size != sizeof(uint32_t))
+          throw std::runtime_error("Invalid loss size");
+
         uint32_t loss_id = 0;
+
         read(&loss_id, sizeof(loss_id));
 
         switch(static_cast<Loss>(loss_id)){
@@ -1531,18 +1650,22 @@ inline void NN::Layer<S, D>::deserialize(const std::string &data){
         };
         break;
       };
-
       case Field::WEIGHTS:{
         if(size != sizeof(weights))
           throw std::runtime_error("Invalid weights size");
         read(weights, sizeof(weights));
+        cpu_weights_dirty = false;
+        gpu_weights_dirty = true;
+        activated_after_forward = false;
         break;
       };
-
       default:{
-        offset += size;
+        offset += static_cast<size_t>(size);
         break;
       };
     };
   };
+
+  glFinish();
+  gpu_header_dirty = true;
 };
