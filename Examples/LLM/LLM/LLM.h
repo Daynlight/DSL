@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <limits>
 #include <chrono>
+#include <charconv>
 
 #include <NeuralNetwork/NeuralNetwork.h>
 #include <NeuralNetwork/Utils.h>
@@ -30,6 +31,35 @@
 
 
 namespace LLM{
+template<size_t V, size_t E>
+class Embedding{
+
+private:
+  std::vector<float> data;
+
+public:
+  Embedding() noexcept;
+  ~Embedding() noexcept;
+
+  void zero(size_t token) noexcept;
+
+  template<size_t C>
+  void forward(const std::array<size_t, C>& tokens, std::array<float, C * E>& output) const noexcept;
+
+  template<size_t C>
+  void backprop(const std::array<size_t, C>& tokens, const float* gradient, float learning_rate, size_t frozen_token = V) noexcept;
+
+  std::string serialize() const noexcept;
+  bool deserialize(std::string_view input) noexcept;
+
+  float* getData() noexcept;
+  const float* getData() const noexcept;
+  size_t size() const noexcept;
+
+};
+
+
+
 class LLM{
 // ======================================== //
 // ================= Data ================= //
@@ -48,12 +78,16 @@ private:
   bool additional_acuracy_show = true;
   bool balanced_learning = false;
   bool dynamic_lr = false;
+  bool gpu_acceleration = true;
 
   static constexpr size_t context_size = 16;
-  static constexpr size_t vocab_size = 1000;
-  static constexpr size_t input_size = context_size * vocab_size;
+  static constexpr size_t embedding_size = 1024;
+  static constexpr size_t input_size = context_size * embedding_size;
+  static constexpr size_t vocab_size = 8192;
   static constexpr size_t response_size = 256;
 
+  Embedding<vocab_size, embedding_size> embedding;
+  static constexpr std::array<size_t, 9> model_shape = {input_size, 16384, 8192, 4096, 4096, 2048, 1024, vocab_size, 1};
   NN::NeuralNetwork<input_size, 16384, 8192, 4096, 4096, 2048, 1024, vocab_size, 1> model;
 
   std::filesystem::path path_to_tokens = std::filesystem::path(__FILE__).parent_path() / "../data/tokens";
@@ -64,6 +98,20 @@ private:
   static constexpr size_t unk_token = 0;
   static constexpr size_t pad_token = 1;
 
+  std::filesystem::path path_to_info = std::filesystem::path(__FILE__).parent_path() / "../data/info";
+  unsigned int update_counter = 0;
+  unsigned int request_counter = 0;
+  float last_ce = 0.0f;
+  float best_ce = std::numeric_limits<float>::max();
+  float last_mse = 0.0f;
+  float best_mse = std::numeric_limits<float>::max();
+  float last_accuracy = 0.0f;
+  float best_accuracy = 0.0f;
+
+  double last_update_time_ms = 0.0;
+  double total_update_time_ms = 0.0;
+
+  std::filesystem::file_time_type info_last_write{};
 
 
 // ======================================== //
@@ -87,10 +135,13 @@ public:
   void setLearningSamples(int value) noexcept;
   void setLearningSetRepeats(int value) noexcept;
   void setBalancedLearning(int value) noexcept;
+  void setGpuAcceleration(int value) noexcept;
   void setDynamicLearningRate(int value) noexcept;
   void setAdditionalAcuracyShow(int value) noexcept;
+  void setMaxLearningRateReductions(int value) noexcept;
   void setModelFilePath(std::filesystem::path path) noexcept;
   std::filesystem::path getModelFilePath() const noexcept;
+  void updateInfo() noexcept;
   
 // =========================== //
 // ====== Serialization ====== //
@@ -98,6 +149,10 @@ public:
 public:
   void loadModelFromFile() noexcept;
   void saveModelToFile() noexcept;
+  void saveEmbeddingToFile() const noexcept;
+  bool loadEmbeddingFromFile() noexcept;
+  void saveInfoToFile() noexcept;
+  void loadInfoFromFile() noexcept;
 
 // =========================== //
 // ========= Helpers ========= //
@@ -133,3 +188,7 @@ public:
 
 };
 };
+
+
+
+#include "LLM.hpp"

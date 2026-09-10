@@ -22,5 +22,6 @@ build/
 .vscode/
 vendor/
 
-model
-tokens
+model*
+tokens*
+info*

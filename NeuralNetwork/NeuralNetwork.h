@@ -87,6 +87,7 @@ public:
   void setGPUAcceleration(bool value) noexcept;
   float* getResult() noexcept;
   float* getActivatedResult() noexcept;
+  const float* getInputSigma() noexcept;
 
 // =========================== //
 // ===== Forward/Backprop ==== //

@@ -224,6 +224,13 @@ inline void NN::NeuralNetwork<First, Second, Rest...>::backpropInitial(std::span
 
 
 
+template <unsigned int First, unsigned int Second, unsigned int... Rest>
+inline const  float *NN::NeuralNetwork<First, Second, Rest...>::getInputSigma() noexcept{
+  return std::get<0>(layers).getSigma();
+};
+
+
+
 // =========================== //
 // ======= Presentation ====== //
 // =========================== //

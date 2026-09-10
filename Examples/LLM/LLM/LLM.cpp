@@ -25,7 +25,9 @@ bool hasInput() noexcept {
 // ======= Constructors ====== //
 // =========================== //
 // core
-LLM::LLM::LLM() noexcept { };
+LLM::LLM::LLM() noexcept {
+  embedding.zero(pad_token);
+};
 
 
 
@@ -53,6 +55,7 @@ std::filesystem::path LLM::LLM::getLearnFilePath() const noexcept {
 void LLM::LLM::setLearningRate(float value) noexcept {
   if(value < 0.00000001) return;
   learning_rate = value;
+  model.setLearningRate(learning_rate);
 };
 
 
@@ -85,6 +88,13 @@ void LLM::LLM::setBalancedLearning(int value) noexcept {
 
 
 
+void LLM::LLM::setGpuAcceleration(int value) noexcept {
+  if(value <= 0) gpu_acceleration = false;
+  else gpu_acceleration = true;
+};
+
+
+
 void LLM::LLM::setDynamicLearningRate(int value) noexcept {
   if(value <= 0) dynamic_lr = false;
   else dynamic_lr = true;
@@ -99,6 +109,13 @@ void LLM::LLM::setAdditionalAcuracyShow(int value) noexcept {
 
 
 
+void LLM::LLM::setMaxLearningRateReductions(int value) noexcept {
+  if(value < 0) return;
+  max_lr_reductions = value;
+};
+
+
+
 void LLM::LLM::setModelFilePath(std::filesystem::path path) noexcept {
   if(!std::filesystem::exists(std::filesystem::path(__FILE__).parent_path() / path) || 
       std::filesystem::is_directory(std::filesystem::path(__FILE__).parent_path() / path)) return;
@@ -109,6 +126,19 @@ void LLM::LLM::setModelFilePath(std::filesystem::path path) noexcept {
 
 std::filesystem::path LLM::LLM::getModelFilePath() const noexcept {
   return path_to_model_data;
+};
+
+
+
+void LLM::LLM::updateInfo() noexcept {
+  if(!std::filesystem::exists(path_to_info) || std::filesystem::is_directory(path_to_info)) return;
+  std::error_code ec;
+  auto last_write = std::filesystem::last_write_time(path_to_info, ec);
+  
+  if(ec || last_write == info_last_write) return;
+  
+  info_last_write = last_write;
+  loadInfoFromFile();
 };
 
 
@@ -141,6 +171,11 @@ void LLM::LLM::loadModelFromFile() noexcept {
   if(!file) return;
 
   model.deserialize(data);
+  if(!loadEmbeddingFromFile()){
+    fmt::println(fg(fmt::color::red), "Embedding missing or invalid for existing model");
+    return;
+  };
+  loadInfoFromFile();
 };
 
 
@@ -151,6 +186,270 @@ void LLM::LLM::saveModelToFile() noexcept {
   std::string data = model.serialize();
 
   if(!data.empty()) file.write(data.data(), data.size());
+  saveEmbeddingToFile();
+  saveInfoToFile();
+};
+
+
+
+void LLM::LLM::saveEmbeddingToFile() const noexcept {
+  std::filesystem::path path = path_to_model_data;
+  path += ".embedding";
+
+  std::ofstream file(path, std::ios::binary | std::ios::trunc);
+  if(!file.is_open()) return;
+
+  std::string data = embedding.serialize();
+
+  if(!data.empty())
+    file.write(data.data(), data.size());
+};
+
+
+
+bool LLM::LLM::loadEmbeddingFromFile() noexcept {
+  std::filesystem::path path = path_to_model_data;
+  path += ".embedding";
+
+  if(!std::filesystem::exists(path) || std::filesystem::is_directory(path)) return false;
+
+  std::ifstream file(path, std::ios::binary);
+  if(!file.is_open()) return false;
+
+  file.seekg(0, std::ios::end);
+  size_t size = file.tellg();
+  file.seekg(0, std::ios::beg);
+
+  if(size != embedding.size() * sizeof(float)) return false;
+
+  std::string data(size, '\0');
+
+  if(size > 0)
+    file.read(data.data(), size);
+
+  if(!file) return false;
+  if(!embedding.deserialize(data)) return false;
+
+  embedding.zero(pad_token);
+
+  return true;
+};
+
+
+
+void LLM::LLM::saveInfoToFile() noexcept {
+  std::ofstream file(path_to_info);
+
+  if(!file) return;
+
+  size_t model_nodes = 0;
+  size_t model_parameters = 0;
+
+  for(size_t i = 1; i < model_shape.size(); i++)
+    model_nodes += model_shape[i];
+
+  for(size_t i = 0; i < model_shape.size() - 1; i++)
+    model_parameters += (model_shape[i] + 1) * model_shape[i + 1];
+
+  constexpr size_t embedding_parameters = vocab_size * embedding_size;
+
+  size_t total_parameters = model_parameters + embedding_parameters;
+
+  file << "[training]\n";
+  file << "learning_rate=" << learning_rate << '\n';
+  file << "epoch=" << epoch << '\n';
+  file << "learn_samples=" << learn_samples << '\n';
+  file << "learning_set_repeats=" << learning_set_repeats << '\n';
+  file << "max_lr_reductions=" << max_lr_reductions << '\n';
+  file << "balanced_learning=" << balanced_learning << '\n';
+  file << "dynamic_lr=" << dynamic_lr << '\n';
+  file << "gpu_acceleration=" << gpu_acceleration << '\n';
+  file << "additional_accuracy_show=" << additional_acuracy_show << '\n';
+
+  file << '\n';
+
+  file << "[statistics]\n";
+  file << "update_counter=" << update_counter << '\n';
+  file << "request_counter=" << request_counter << '\n';
+  file << "last_ce=" << last_ce << '\n';
+  file << "best_ce=" << best_ce << '\n';
+  file << "last_mse=" << last_mse << '\n';
+  file << "best_mse=" << best_mse << '\n';
+  file << "last_accuracy=" << last_accuracy << '\n';
+  file << "best_accuracy=" << best_accuracy << '\n';
+  file << "last_update_time_ms=" << last_update_time_ms << '\n';
+  file << "total_update_time_ms=" << total_update_time_ms << '\n';
+  file << "average_update_time_ms=" << (update_counter ? total_update_time_ms / update_counter : 0.0) << '\n';
+
+  file << '\n';
+
+  file << "[architecture]\n";
+  file << "context_size=" << context_size << '\n';
+  file << "embedding_size=" << embedding_size << '\n';
+  file << "input_size=" << input_size << '\n';
+  file << "vocab_size=" << vocab_size << '\n';
+  file << "response_size=" << response_size << '\n';
+
+  file << '\n';
+
+  file << "model_layers=" << model_shape.size() - 1 << '\n';
+  file << "model_nodes=" << model_nodes << '\n';
+  file << "model_parameters=" << model_parameters << '\n';
+  file << "embedding_parameters=" << embedding_parameters << '\n';
+  file << "total_parameters=" << total_parameters << '\n';
+
+  file << "model_size_bytes=" << model_parameters * sizeof(float) << '\n';
+  file << "embedding_size_bytes=" << embedding_parameters * sizeof(float) << '\n';
+  file << "total_parameter_size_bytes=" << total_parameters * sizeof(float) << '\n';
+
+  file << "model_shape=";
+
+  for(size_t i = 0; i < model_shape.size(); i++){
+    if(i) file << ',';
+    file << model_shape[i];
+  };
+
+  file << '\n';
+
+  file.close();
+
+  std::error_code ec;
+  auto last_write = std::filesystem::last_write_time(path_to_info, ec);
+
+  if(!ec) info_last_write = last_write;
+};
+
+
+
+void LLM::LLM::loadInfoFromFile() noexcept {
+  if(!std::filesystem::exists(path_to_info) || std::filesystem::is_directory(path_to_info)) return;
+
+  std::ifstream file(path_to_info);
+
+  if(!file) return;
+
+  std::string line;
+
+  while(std::getline(file, line)){
+
+    if(line.empty() || line.front() == '[') continue;
+
+    size_t pos = line.find('=');
+
+    if(pos == std::string::npos) continue;
+
+    std::string_view key(line.data(), pos);
+    std::string_view value(line.data() + pos + 1, line.size() - pos - 1);
+
+    if(key == "learning_rate"){
+
+      float data = 0.0f;
+
+      if(std::from_chars(value.data(), value.data() + value.size(), data).ec == std::errc())
+        setLearningRate(data);
+
+    }
+    else if(key == "epoch"){
+
+      int data = 0;
+
+      if(std::from_chars(value.data(), value.data() + value.size(), data).ec == std::errc())
+        setLearningEpoch(data);
+
+    }
+    else if(key == "learn_samples"){
+
+      int data = 0;
+
+      if(std::from_chars(value.data(), value.data() + value.size(), data).ec == std::errc())
+        setLearningSamples(data);
+
+    }
+    else if(key == "learning_set_repeats"){
+
+      int data = 0;
+
+      if(std::from_chars(value.data(), value.data() + value.size(), data).ec == std::errc())
+        setLearningSetRepeats(data);
+
+    }
+    else if(key == "max_lr_reductions"){
+
+      int data = 0;
+
+      if(std::from_chars(value.data(), value.data() + value.size(), data).ec == std::errc())
+        setMaxLearningRateReductions(data);
+
+    }
+    else if(key == "balanced_learning"){
+
+      int data = 0;
+
+      if(std::from_chars(value.data(), value.data() + value.size(), data).ec == std::errc())
+        setBalancedLearning(data);
+
+    }
+    else if(key == "dynamic_lr"){
+
+      int data = 0;
+
+      if(std::from_chars(value.data(), value.data() + value.size(), data).ec == std::errc())
+        setDynamicLearningRate(data);
+
+    }
+    else if(key == "gpu_acceleration"){
+
+      int data = 0;
+
+      if(std::from_chars(value.data(), value.data() + value.size(), data).ec == std::errc())
+        setGpuAcceleration(data);
+
+    }
+    else if(key == "additional_accuracy_show"){
+
+      int data = 0;
+
+      if(std::from_chars(value.data(), value.data() + value.size(), data).ec == std::errc())
+        setAdditionalAcuracyShow(data);
+
+    }
+    else if(key == "update_counter")
+      std::from_chars(value.data(), value.data() + value.size(), update_counter);
+
+    else if(key == "request_counter")
+      std::from_chars(value.data(), value.data() + value.size(), request_counter);
+
+    else if(key == "last_ce")
+      std::from_chars(value.data(), value.data() + value.size(), last_ce);
+
+    else if(key == "best_ce")
+      std::from_chars(value.data(), value.data() + value.size(), best_ce);
+
+    else if(key == "last_mse")
+      std::from_chars(value.data(), value.data() + value.size(), last_mse);
+
+    else if(key == "best_mse")
+      std::from_chars(value.data(), value.data() + value.size(), best_mse);
+
+    else if(key == "last_accuracy")
+      std::from_chars(value.data(), value.data() + value.size(), last_accuracy);
+
+    else if(key == "best_accuracy")
+      std::from_chars(value.data(), value.data() + value.size(), best_accuracy);
+
+    else if(key == "last_update_time_ms")
+      std::from_chars(value.data(), value.data() + value.size(), last_update_time_ms);
+
+    else if(key == "total_update_time_ms")
+      std::from_chars(value.data(), value.data() + value.size(), total_update_time_ms);
+  };
+
+  file.close();
+
+  std::error_code ec;
+  auto last_write = std::filesystem::last_write_time(path_to_info, ec);
+
+  if(!ec) info_last_write = last_write;
 };
 
 
@@ -248,7 +547,7 @@ void LLM::LLM::setModel() noexcept {
   model.setActivation<6, NN::ReLU>();
   model.setActivation<7, NN::Softmax>();
   model.setLoss<7, NN::CrossEntropy>();
-  // model.setGPUAcceleration(false);
+  model.setGPUAcceleration(gpu_acceleration);
 };
 
 
@@ -276,6 +575,10 @@ void LLM::LLM::learningInfo(bool show_learning_ifno, const std::array<float, voc
   log_samples++;
 
   if(show_learning_ifno){
+    float average_mse = mse_sum / log_samples;
+    float average_ce = ce_sum / log_samples;
+    float accuracy = 100.0f * correct / log_samples;
+
     fmt::println("");
     fmt::println(
       "Average MSE: {}, CE: {}, Accuracy: {}%",
@@ -283,6 +586,14 @@ void LLM::LLM::learningInfo(bool show_learning_ifno, const std::array<float, voc
       ce_sum / log_samples,
       100.0 * correct / log_samples
     );
+
+      last_ce = average_ce;
+    last_mse = average_mse;
+    last_accuracy = accuracy;
+
+    best_ce = std::min(best_ce, average_ce);
+    best_mse = std::min(best_mse, average_mse);
+    best_accuracy = std::max(best_accuracy, accuracy);
 
     mse_sum = 0.0;
     ce_sum = 0.0;
@@ -448,6 +759,7 @@ void LLM::LLM::learn() noexcept {
   fmt::println(fg(fmt::color::blue), "Dynamic Learning Rate: {}", dynamic_lr);
   fmt::println(fg(fmt::color::blue), "Max Dynamic Learning Rate Reduction: {}", max_lr_reductions);
   fmt::println(fg(fmt::color::blue), "Balanced Learning: {}", balanced_learning);
+  fmt::println(fg(fmt::color::blue), "GPU Acceleration: {}", gpu_acceleration);
   fmt::println(fg(fmt::color::blue), "Additional Info: {}", additional_acuracy_show);
 
   fmt::println(fg(fmt::color::yellow), "-- Prepering Data");
@@ -466,12 +778,12 @@ void LLM::LLM::learn() noexcept {
   std::vector<size_t> encoded_text = encodeTokens(text);
   if(encoded_text.size() <= context_size) return;
   if(tokens.size() != vocab_size) return;
-  
 
   fmt::println(fg(fmt::color::yellow), "-- Learning");
   fmt::println(fg(fmt::color::white), "enter to abort without lossing");
 
   setModel();
+  embedding.zero(pad_token);
 
   std::array<float, input_size> input{};
   std::array<float, vocab_size> target{};
@@ -480,7 +792,7 @@ void LLM::LLM::learn() noexcept {
   size_t previous_expected = 0;
   bool has_previous_sample = false;
 
-  float best_ce = std::numeric_limits<float>::max();
+  float scheduler_best_ce = std::numeric_limits<float>::max();
   unsigned int stale_epochs = 0;
   unsigned int lr_reductions = 0;
 
@@ -492,6 +804,7 @@ void LLM::LLM::learn() noexcept {
   for(size_t i = 1; i < encoded_text.size(); i++){
     size_t token = encoded_text[i];
     if(token == unk_token || token == pad_token) continue;
+
     token_positions[token].push_back(i);
     valid_positions.push_back(i);
   };
@@ -500,7 +813,27 @@ void LLM::LLM::learn() noexcept {
   if(valid_positions.empty()) return;
 
   for(unsigned int j = 0; j < epoch; j++){
+    updateInfo();
+    learning_set.resize(learn_samples);
     auto last = std::chrono::steady_clock::now();
+
+    fmt::println(fg(fmt::color::yellow), "-- Parameters");
+    fmt::println(fg(fmt::color::blue), "Path To Learning Set: {}", path_to_learning_set);
+    fmt::println(fg(fmt::color::blue), "Path To Model Data: {}", path_to_model_data);
+    fmt::println(fg(fmt::color::blue), "Path To Tokens: {}", path_to_tokens);
+    fmt::println(fg(fmt::color::blue), "Context Size: {}", context_size);
+    fmt::println(fg(fmt::color::blue), "Vocab Size: {}", vocab_size);
+    fmt::println(fg(fmt::color::blue), "Input Size: {}", input_size);
+    fmt::println(fg(fmt::color::blue), "Epoch: {}", epoch);
+    fmt::println(fg(fmt::color::blue), "Learn Samples: {}", learn_samples);
+    fmt::println(fg(fmt::color::blue), "Learning Repeat: {}", learning_set_repeats);
+    fmt::println(fg(fmt::color::blue), "Learning Rate: {}", learning_rate);
+    fmt::println(fg(fmt::color::blue), "Dynamic Learning Rate: {}", dynamic_lr);
+    fmt::println(fg(fmt::color::blue), "Max Dynamic Learning Rate Reduction: {}", max_lr_reductions);
+    fmt::println(fg(fmt::color::blue), "Balanced Learning: {}", balanced_learning);
+    fmt::println(fg(fmt::color::blue), "GPU Acceleration: {}", gpu_acceleration);
+    fmt::println(fg(fmt::color::blue), "Additional Info: {}", additional_acuracy_show);
+
     fmt::println("learn_samples: {}", learn_samples);
     fmt::println("learning_set_repeats: {}", learning_set_repeats);
     fmt::println("valid_positions: {}", valid_positions.size());
@@ -512,6 +845,7 @@ void LLM::LLM::learn() noexcept {
       if(balanced_learning){
         size_t token = available_tokens[rand() % available_tokens.size()];
         const std::vector<size_t>& positions = token_positions[token];
+
         learning_set[i] = positions[rand() % positions.size()];
       }
       else learning_set[i] = valid_positions[rand() % valid_positions.size()];
@@ -529,19 +863,21 @@ void LLM::LLM::learn() noexcept {
       fmt::println(fg(fmt::color::white), "-- Repeat {}/{}", r + 1, learning_set_repeats);
 
       for(unsigned int i = 0; i < learn_samples; i++){
+        auto start_update = std::chrono::steady_clock::now();
+
         if(hasInput()){
           std::string input_io;
           std::getline(std::cin, input_io);
+
           fmt::println("");
           fmt::println(fg(fmt::color::yellow), "-- Learning aborted");
+
           saveModelToFile();
           return;
         };
 
-        if(has_previous_sample){
-          for(size_t k = 0; k < context_size; k++) input[active_input[k]] = 0.0;
+        if(has_previous_sample)
           target[previous_expected] = 0.0;
-        };
 
         const size_t expected_position = learning_set[i];
         const size_t available = std::min(expected_position, context_size);
@@ -549,19 +885,16 @@ void LLM::LLM::learn() noexcept {
         const size_t padding = context_size - words;
         const size_t offset = expected_position - words;
 
-        for(size_t k = 0; k < padding; k++){
-          const size_t index = k * vocab_size + pad_token;
-          active_input[k] = index;
-          input[index] = 1.0;
-        };
+        for(size_t k = 0; k < padding; k++)
+          active_input[k] = pad_token;
 
-        for(size_t k = 0; k < words; k++){
-          const size_t index = (padding + k) * vocab_size + encoded_text[offset + k];
-          active_input[padding + k] = index;
-          input[index] = 1.0;
-        };
+        for(size_t k = 0; k < words; k++)
+          active_input[padding + k] = encoded_text[offset + k];
+
+        embedding.forward(active_input, input);
 
         const size_t expected = encoded_text[expected_position];
+
         target[expected] = 1.0;
         previous_expected = expected;
         has_previous_sample = true;
@@ -571,16 +904,34 @@ void LLM::LLM::learn() noexcept {
 
         if(dynamic_lr){
           float* result = model.getActivatedResult();
+
           epoch_ce_sum += -std::log(std::max(result[expected], 0.0000001f));
           epoch_samples++;
         };
 
         if(additional_acuracy_show){
           const bool show_learning_ifno = ((i + 1) % 100 == 0 || i + 1 == learn_samples);
+
           learningInfo(show_learning_ifno, target, expected, ce_sum, mse_sum, correct, log_samples);
         };
 
         model.backprop(target);
+
+        
+        embedding.backprop(
+          active_input,
+          model.getInputSigma(),
+          learning_rate,
+          pad_token
+        );
+        
+
+        glFinish();
+        auto end_update = std::chrono::steady_clock::now();
+        update_counter++;
+        last_update_time_ms = std::chrono::duration<double, std::milli>(end_update - start_update).count();
+        total_update_time_ms += last_update_time_ms;
+
         NN::Utils::progressBar(i, learn_samples);
       };
     };
@@ -588,8 +939,8 @@ void LLM::LLM::learn() noexcept {
     if(dynamic_lr && epoch_samples > 0){
       float epoch_ce = epoch_ce_sum / epoch_samples;
 
-      if(epoch_ce < best_ce - 0.01){
-        best_ce = epoch_ce;
+      if(epoch_ce < scheduler_best_ce - 0.01){
+        scheduler_best_ce = epoch_ce;
         stale_epochs = 0;
       }
       else stale_epochs++;
@@ -597,10 +948,13 @@ void LLM::LLM::learn() noexcept {
       if(stale_epochs >= 3 && lr_reductions < max_lr_reductions){
         learning_rate *= 0.5f;
         learning_rate = std::max(learning_rate, 0.00001f);
+
         model.setLearningRate(learning_rate);
-        best_ce = epoch_ce;
+
+        scheduler_best_ce = epoch_ce;
         stale_epochs = 0;
         lr_reductions++;
+
         fmt::println(fg(fmt::color::purple), "-- Learning rate reduced to {}", learning_rate);
       };
     };
@@ -609,9 +963,9 @@ void LLM::LLM::learn() noexcept {
 
     auto now = std::chrono::steady_clock::now();
     float elapsed = std::chrono::duration<float>(now - last).count();
-    
+
     fmt::println("Elapsed: {:.3f}s", elapsed);
-    
+
     last = now;
     saveModelToFile();
   };
@@ -636,29 +990,36 @@ std::string LLM::LLM::getRespond(const std::string &message) noexcept {
   setModel();
 
   std::array<float, input_size> input{};
+  std::array<size_t, context_size> active_input{};
 
   for(size_t i = 0; i < response_size; i++){
-    input.fill(0.0);
-
     size_t words = std::min(context.size(), context_size);
     size_t padding = context_size - words;
     size_t start = context.size() - words;
 
-    for(size_t k = 0; k < padding; k++) input[k * vocab_size + pad_token] = 1.0;
+    for(size_t k = 0; k < padding; k++)
+      active_input[k] = pad_token;
 
-    for(size_t k = 0; k < words; k++) input[(padding + k) * vocab_size + context[start + k]] = 1.0;
+    for(size_t k = 0; k < words; k++)
+      active_input[padding + k] = context[start + k];
+
+    embedding.forward(active_input, input);
 
     model.setInput(input);
     model.forward();
 
     float* result = model.getResult();
+
     size_t predicted = 0;
 
-    for(size_t j = 1; j < vocab_size; j++) if(result[j] > result[predicted]) predicted = j;
+    for(size_t j = 1; j < vocab_size; j++)
+      if(result[j] > result[predicted]) predicted = j;
 
     response.push_back(predicted);
     context.push_back(predicted);
   };
+
+  request_counter++;
 
   return decodeTokens(response);
 };
@@ -675,6 +1036,7 @@ void LLM::LLM::printHelp() const noexcept {
   fmt::println(fg(fmt::color::blue), "set_learn_samples - to set learn samples");
   fmt::println(fg(fmt::color::blue), "set_learning_repeats - to set learn repeats");
   fmt::println(fg(fmt::color::blue), "set_balanced_learning - to set balanced learn");
+  fmt::println(fg(fmt::color::blue), "set_gup_acceleration - to set gpu acceleration learn");
   fmt::println(fg(fmt::color::blue), "set_learn_additional_log - to set learn logs");
   fmt::println(fg(fmt::color::blue), "set_dynamic_lr - to set dynamic learning rate");
   fmt::println(fg(fmt::color::blue), "print_model - print model");
@@ -867,11 +1229,30 @@ void LLM::LLM::onUpdate() noexcept {
     return;
   };
 
+  if(input == "set_gup_acceleration"){
+    std::string new_acc = "";
+    fmt::print(fg(fmt::color::white), "new_acc > ");
+    std::getline(std::cin, new_acc);
+    
+    int new_acc_val = 0;
+    try{
+      new_acc_val = std::stoi(new_acc);
+    }
+    catch(...){
+      fmt::println(fg(fmt::color::red), "Invalid integer");
+      return;
+    };
+    
+    setGpuAcceleration(new_acc_val);
+    return;
+  };
+
   if(input == "print_model"){
     fmt::println(fg(fmt::color::blue), "{}", model.print());
     return;
   };
 
+  updateInfo();
   std::string res = getRespond(input);
   fmt::println(fg(fmt::color::azure), "{}", res);
 };
