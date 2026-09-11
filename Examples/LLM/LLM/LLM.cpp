@@ -181,6 +181,7 @@ void LLM::LLM::loadModelFromFile() noexcept {
 
 
 void LLM::LLM::saveModelToFile() noexcept {
+  updateInfo();
   std::ofstream file(path_to_model_data, std::ios::binary);
   if(!file.is_open()) return;
   std::string data = model.serialize();
@@ -193,23 +194,19 @@ void LLM::LLM::saveModelToFile() noexcept {
 
 
 void LLM::LLM::saveEmbeddingToFile() const noexcept {
-  std::filesystem::path path = path_to_model_data;
-  path += ".embedding";
+  std::filesystem::path path = path_to_embedding;
 
   std::ofstream file(path, std::ios::binary | std::ios::trunc);
   if(!file.is_open()) return;
 
   std::string data = embedding.serialize();
-
-  if(!data.empty())
-    file.write(data.data(), data.size());
+  if(!data.empty()) file.write(data.data(), data.size());
 };
 
 
 
 bool LLM::LLM::loadEmbeddingFromFile() noexcept {
-  std::filesystem::path path = path_to_model_data;
-  path += ".embedding";
+  std::filesystem::path path = path_to_embedding;
 
   if(!std::filesystem::exists(path) || std::filesystem::is_directory(path)) return false;
 
@@ -543,10 +540,8 @@ void LLM::LLM::setModel() noexcept {
   model.setActivation<2, NN::ReLU>();
   model.setActivation<3, NN::ReLU>();
   model.setActivation<4, NN::ReLU>();
-  model.setActivation<5, NN::ReLU>();
-  model.setActivation<6, NN::ReLU>();
-  model.setActivation<7, NN::Softmax>();
-  model.setLoss<7, NN::CrossEntropy>();
+  model.setActivation<5, NN::Softmax>();
+  model.setLoss<5, NN::CrossEntropy>();
   model.setGPUAcceleration(gpu_acceleration);
 };
 

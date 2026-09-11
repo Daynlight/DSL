@@ -65,8 +65,8 @@ class LLM{
 // ================= Data ================= //
 // ======================================== //
 private:
-  std::filesystem::path path_to_learning_set = std::filesystem::path(__FILE__).parent_path() / "../data/learn_set.txt";
-  std::filesystem::path path_to_model_data = std::filesystem::path(__FILE__).parent_path() / "../data/model";
+  std::filesystem::path path_to_learning_set = std::filesystem::path("learn") / std::filesystem::path("learn_set.txt");
+  std::filesystem::path path_to_model_data = std::filesystem::path("model") / std::filesystem::path("model");
   bool model_is_loaded_from_file = false;
   bool is_running = true;
 
@@ -81,16 +81,16 @@ private:
   bool gpu_acceleration = true;
 
   static constexpr size_t context_size = 16;
-  static constexpr size_t embedding_size = 1024;
+  static constexpr size_t embedding_size = 512;
   static constexpr size_t input_size = context_size * embedding_size;
   static constexpr size_t vocab_size = 8192;
   static constexpr size_t response_size = 256;
 
   Embedding<vocab_size, embedding_size> embedding;
-  static constexpr std::array<size_t, 9> model_shape = {input_size, 16384, 8192, 4096, 4096, 2048, 1024, vocab_size, 1};
-  NN::NeuralNetwork<input_size, 16384, 8192, 4096, 4096, 2048, 1024, vocab_size, 1> model;
+  static constexpr std::array<size_t, 7> model_shape = {input_size, 8192, 4096, 2048, 1024, vocab_size, 1};
+  NN::NeuralNetwork<input_size, 8192, 4096, 2048, 1024, vocab_size, 1> model;
 
-  std::filesystem::path path_to_tokens = std::filesystem::path(__FILE__).parent_path() / "../data/tokens";
+  std::filesystem::path path_to_tokens = std::filesystem::path("model") / std::filesystem::path("tokens");
 
   std::vector<std::string> tokens;
   std::unordered_map<std::string, size_t> token_to_id;
@@ -98,7 +98,8 @@ private:
   static constexpr size_t unk_token = 0;
   static constexpr size_t pad_token = 1;
 
-  std::filesystem::path path_to_info = std::filesystem::path(__FILE__).parent_path() / "../data/info";
+  std::filesystem::path path_to_embedding = std::filesystem::path("model") / std::filesystem::path("embedding");
+  std::filesystem::path path_to_info = std::filesystem::path("model") / std::filesystem::path("info");
   unsigned int update_counter = 0;
   unsigned int request_counter = 0;
   float last_ce = 0.0f;
